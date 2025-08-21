@@ -597,7 +597,7 @@ elif page == "🛰️ Satellite Data":
                     **vis_params
                 })
 
-                st.image(url, caption="Sentinel-2 RGB Composite", use_column_width=True)
+                st.image(url, caption="Sentinel-2 RGB Composite", use_container_width=True)
 
         except Exception as e:
             st.error(f"Error downloading satellite data: {e}")
@@ -958,4 +958,40 @@ elif page == "📋 Results":
 
         st.write(class_stats)
 
-    # Rest of your code remains unchanged...
+    with tabs[1]:
+        if 'longitude' in df.columns and 'latitude' in df.columns:
+            st.subheader("🗺️ Spatial Distribution Map")
+            fig = px.scatter_mapbox(
+                df,
+                lat='latitude',
+                lon='longitude',
+                color='predicted_class',
+                zoom=10,
+                height=600,
+                title="Predicted Land Cover Classes"
+            )
+            fig.update_layout(mapbox_style="open-street-map")
+            st.plotly_chart(fig, use_container_width=True)
+
+    with tabs[2]:
+        st.subheader("📊 Confidence Analysis")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.boxplot(data=df, x='predicted_class', y='prediction_confidence', ax=ax)
+        ax.set_title('Prediction Confidence by Class')
+        ax.set_xlabel('Land Cover Class')
+        ax.set_ylabel('Prediction Confidence')
+        plt.xticks(rotation=45)
+        st.pyplot(fig)
+
+    with tabs[3]:
+        st.subheader("🔍 Feature Analysis by Class")
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols[:5]:  # Show first 5 numeric features
+            if col not in ['longitude', 'latitude', 'prediction_confidence']:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sns.boxplot(data=df, x='predicted_class', y=col, ax=ax)
+                ax.set_title(f'Distribution of {col} by Class')
+                ax.set_xlabel('Land Cover Class')
+                ax.set_ylabel(col)
+                plt.xticks(rotation=45)
+                st.pyplot(fig)
