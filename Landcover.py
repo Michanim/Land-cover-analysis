@@ -10,6 +10,7 @@ from datetime import datetime, date
 import zipfile
 import os
 import tempfile
+import plotly.express as px  # Added this import for Plotly Express
 
 # ML imports
 from sklearn.model_selection import train_test_split
@@ -961,17 +962,32 @@ elif page == "📋 Results":
     with tabs[1]:
         if 'longitude' in df.columns and 'latitude' in df.columns:
             st.subheader("🗺️ Spatial Distribution Map")
-            fig = px.scatter_mapbox(
-                df,
-                lat='latitude',
-                lon='longitude',
-                color='predicted_class',
-                zoom=10,
-                height=600,
-                title="Predicted Land Cover Classes"
-            )
-            fig.update_layout(mapbox_style="open-street-map")
-            st.plotly_chart(fig, use_container_width=True)
+            try:
+                fig = px.scatter_mapbox(
+                    df,
+                    lat='latitude',
+                    lon='longitude',
+                    color='predicted_class',
+                    zoom=10,
+                    height=600,
+                    title="Predicted Land Cover Classes"
+                )
+                fig.update_layout(mapbox_style="open-street-map")
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error creating spatial distribution map: {e}")
+                st.write("Make sure you have a valid Mapbox token or use another map style.")
+                # Fallback to a simpler plot
+                fig, ax = plt.subplots(figsize=(10, 6))
+                for land_class in df['predicted_class'].unique():
+                    class_df = df[df['predicted_class'] == land_class]
+                    ax.scatter(class_df['longitude'], class_df['latitude'],
+                              label=land_class, alpha=0.5, s=10)
+                ax.set_title('Spatial Distribution of Predicted Classes')
+                ax.set_xlabel('Longitude')
+                ax.set_ylabel('Latitude')
+                ax.legend()
+                st.pyplot(fig)
 
     with tabs[2]:
         st.subheader("📊 Confidence Analysis")
