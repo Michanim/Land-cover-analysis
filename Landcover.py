@@ -10,7 +10,7 @@ from datetime import datetime, date
 import zipfile
 import os
 import tempfile
-import plotly.express as px  # Added this import for Plotly Express
+import plotly.express as px  # Added Plotly Express import
 
 # ML imports
 from sklearn.model_selection import train_test_split
@@ -54,6 +54,8 @@ if 'feature_data' not in st.session_state:
     st.session_state.feature_data = None
 if 'ee_authenticated' not in st.session_state:
     st.session_state.ee_authenticated = False
+if 'classified_data' not in st.session_state:
+    st.session_state.classified_data = None
 
 # --- Earth Engine Authentication ---
 def authenticate_ee():
@@ -538,7 +540,7 @@ elif page == "🛰️ Satellite Data":
                 # Check if collection is empty
                 size = collection.size()
                 if size.getInfo() == 0:
-                    st.error("No images found for the specified criteria")
+                    st.error("No images found for the specified criteria. Try adjusting the date range or increasing the cloud cover threshold.")
                     st.stop()
 
                 st.success(f"✅ Found {size.getInfo()} images")
@@ -576,29 +578,81 @@ elif page == "🛰️ Satellite Data":
                         st.write("**Extracted Features Preview:**")
                         st.write(feature_df.head())
 
-                # Display image preview
+                # Display image preview with improved parameters
                 st.subheader("📷 Image Preview")
 
-                # Get image bounds for visualization
-                bounds = ee_geom.bounds().getInfo()['coordinates'][0]
+                try:
+                    # Get image bounds for visualization
+                    bounds = ee_geom.bounds().getInfo()['coordinates'][0]
 
-                # Create visualization parameters
-                vis_params = {
-                    'bands': ['B4', 'B3', 'B2'],
-                    'min': 0,
-                    'max': 3000,
-                    'gamma': 1.4
-                }
+                    # Create visualization parameters with adjusted values
+                    vis_params = {
+                        'bands': ['B4', 'B3', 'B2'],  # RGB
+                        'min': 0.05,  # Increased from 0 to 0.05
+                        'max': 0.3,   # Reduced from 3000 to 0.3 (normalized values)
+                        'gamma': 1.4
+                    }
 
-                # Get image URL for display
-                url = image.select(['B4', 'B3', 'B2']).getThumbURL({
-                    'dimensions': 512,
-                    'region': ee_geom,
-                    'format': 'png',
-                    **vis_params
-                })
+                    # Get image URL for display with higher resolution
+                    url = image.select(['B4', 'B3', 'B2']).getThumbURL({
+                        'dimensions': 800,  # Increased from 512
+                        'region': ee_geom,
+                        'format': 'png',
+                        **vis_params
+                    })
 
-                st.image(url, caption="Sentinel-2 RGB Composite", use_container_width=True)
+                    st.image(url, caption="Sentinel-2 RGB Composite", use_container_width=True)
+
+                    # Add debug information
+                    with st.expander("🔍 Debug Information"):
+                        st.write("**Image Statistics:**")
+                        stats = image.reduceRegion(
+                            reducer=ee.Reducer.minMax(),
+                            geometry=ee_geom,
+                            scale=10,
+                            maxPixels=1e9
+                        ).getInfo()
+
+                        if stats:
+                            st.write(f"Band Min/Max Values:")
+                            for band in ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']:
+                                if band in stats:
+                                    st.write(f"{band}: {stats[band]['min']:.4f} - {stats[band]['max']:.4f}")
+                        else:
+                            st.write("Could not retrieve image statistics")
+
+                        # Check if image is empty
+                        is_empty = image.reduceRegion(
+                            reducer=ee.Reducer.anyNonZero(),
+                            geometry=ee_geom,
+                            scale=10,
+                            maxPixels=1e9
+                        ).getInfo()
+
+                        st.write(f"Image contains valid pixels: {bool(is_empty.get('B4', False))}")
+
+                        if not bool(is_empty.get('B4', False)):
+                            st.warning("""
+                            The image appears to be empty. This could be due to:
+                            1. All pixels being masked out by cloud detection
+                            2. No valid images available for the selected date range
+                            3. The area of interest not being covered by Sentinel-2 data
+
+                            Try these solutions:
+                            - Increase the cloud cover threshold
+                            - Adjust the date range to include more dates
+                            - Check if your area of interest is valid
+                            """)
+
+                except Exception as preview_error:
+                    st.error(f"Error generating image preview: {preview_error}")
+                    st.info("""
+                    Tips for fixing black image preview:
+                    1. Try adjusting the date range to get images with less cloud cover
+                    2. Check if your area of interest is valid
+                    3. The image might be completely covered by clouds after masking
+                    4. Try increasing the cloud cover threshold
+                    """)
 
         except Exception as e:
             st.error(f"Error downloading satellite data: {e}")
