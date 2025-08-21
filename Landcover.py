@@ -2,131 +2,100 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import geopandas as gpd
-import io
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
+import io
 
-# --- Custom Dark Mode CSS ---
-st.markdown("""
-<style>
-    /* App background */
-    .stApp {
-        background-color: #121212;
-        color: #f1f1f1;
-    }
-    /* Headings */
-    h1, h2, h3, h4 {
-        color: #ffffff !important;
-    }
-    /* Buttons */
-    .stButton>button {
-        background-color: #1f6feb;
-        color: white;
-        border-radius: 8px;
-        border: none;
-        padding: 8px 20px;
-    }
-    .stButton>button:hover {
-        background-color: #1158c7;
-    }
-    /* Info boxes */
-    .success-box {
-        background-color: #1a3322;
-        border-left: 4px solid #28a745;
-        padding: 0.7rem;
-        border-radius: 5px;
-    }
-    .error-box {
-        background-color: #331b1b;
-        border-left: 4px solid #dc3545;
-        padding: 0.7rem;
-        border-radius: 5px;
-    }
-    /* Hide default sidebar */
-    section[data-testid="stSidebar"] {
-        display: none !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+# ML imports
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix
 
-# --- Top Navigation (using radio, no extra install needed) ---
-cols = st.columns(6)
-pages = ["Data Upload", "Data Download", "Visualization", "Model Training", "Classification", "Results"]
-icons = ["⬆️", "⬇️", "📊", "🤖", "🗺️", "📋"]
+# Folium imports
+import folium
+from streamlit_folium import st_folium
 
-page = None
-for i, col in enumerate(cols):
-    if col.button(f"{icons[i]} {pages[i]}"):
-        page = pages[i]
-if page is None:
-    page = pages[0]  # Default page
+# --- Streamlit Page Config ---
+st.set_page_config(page_title="Land Cover Analysis", layout="wide")
 
-# --- Page Content ---
+# --- Custom Styling ---
+st.markdown(
+    """
+    <style>
+    .main {background-color: #f8f9fa;}
+    .stButton>button {background-color: #4CAF50; color: white; border-radius: 8px;}
+    .stFileUploader {border: 2px dashed #6c757d;}
+    .success-box {padding:10px; background:#d4edda; border-radius:5px; color:#155724;}
+    .error-box {padding:10px; background:#f8d7da; border-radius:5px; color:#721c24;}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- Title ---
+st.title("🌍 Land Cover Analysis Dashboard")
+
+# --- Navigation ---
+page = st.radio("Navigate", ["Data Upload", "Data Download", "Visualization", "Model Training", "Classification", "Results"], horizontal=True)
+
+# --- 1. Data Upload ---
 if page == "Data Upload":
-    st.header("⬆️ Data Upload")
-    uploaded_file = st.file_uploader("Upload your CSV data", type=["csv"])
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        st.success("Data uploaded successfully!")
-        st.write(df.head())
+    st.header("📂 Upload Data")
 
-    # GeoJSON upload with FIX
+    # CSV Upload
+    uploaded_file = st.file_uploader("Upload your dataset (CSV)", type=["csv"])
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.success("CSV loaded successfully!")
+            st.write(df.head())
+        except Exception as e:
+            st.error(f"Error loading CSV: {e}")
+
+    # GeoJSON Upload
     geojson_file = st.file_uploader("Upload GeoJSON AOI", type=["geojson"])
     if geojson_file is not None:
         try:
             gdf = gpd.read_file(io.BytesIO(geojson_file.read()))
 
-            # Ensure CRS is WGS84 for mapping
+            # Ensure CRS is WGS84
             if gdf.crs is None or gdf.crs.to_string() != "EPSG:4326":
                 gdf = gdf.to_crs("EPSG:4326")
 
             st.markdown('<div class="success-box">GeoJSON loaded successfully!</div>', unsafe_allow_html=True)
             st.write(gdf.head())
 
-            # Plot AOI
-            st.map(gdf)
+            # --- Display AOI on interactive Folium map ---
+            center = [gdf.geometry.centroid.y.mean(), gdf.geometry.centroid.x.mean()]
+            m = folium.Map(location=center, zoom_start=12, tiles="CartoDB positron")
+            folium.GeoJson(gdf).add_to(m)
+
+            st_folium(m, width=700, height=500)
+
         except Exception as e:
             st.markdown(f'<div class="error-box">Error loading GeoJSON: {e}</div>', unsafe_allow_html=True)
 
+# --- 2. Data Download ---
 elif page == "Data Download":
-    st.header("⬇️ Data Download")
-    st.info("This page will provide processed data for download.")
-    # Example: Download button
-    sample_data = pd.DataFrame({"col1": [1,2,3], "col2":[4,5,6]})
-    csv = sample_data.to_csv(index=False).encode("utf-8")
-    st.download_button("Download Sample Data", csv, "data.csv", "text/csv")
+    st.header("⬇️ Download Processed Data")
+    st.info("Feature coming soon: Export processed datasets, shapefiles, and models.")
 
+# --- 3. Visualization ---
 elif page == "Visualization":
-    st.header("📊 Visualization")
-    st.info("Visualize land cover classes and statistics here.")
+    st.header("📊 Data Visualization")
+    st.info("Upload data first to generate visualizations.")
 
-    # Example visualization
-    sample_data = pd.DataFrame({
-        "class": ["Forest", "Water", "Urban"],
-        "pixels": [1200, 800, 600]
-    })
-    fig, ax = plt.subplots()
-    ax.bar(sample_data["class"], sample_data["pixels"])
-    st.pyplot(fig)
-
+# --- 4. Model Training ---
 elif page == "Model Training":
     st.header("🤖 Model Training")
-    st.info("Train a land cover classification model here.")
+    st.info("Upload training dataset to build ML models.")
 
-    # Example training with dummy data
-    X, y = np.random.rand(100, 5), np.random.randint(0, 2, 100)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-    clf = RandomForestClassifier()
-    clf.fit(X_train, y_train)
-    st.success(f"Model trained with accuracy: {clf.score(X_test, y_test):.2f}")
-
+# --- 5. Classification ---
 elif page == "Classification":
-    st.header("🗺️ Classification")
-    st.info("Apply trained model for classification on satellite images.")
-    st.warning("Demo only – classification pipeline to be connected.")
+    st.header("🗺️ Land Cover Classification")
+    st.info("Upload AOI and satellite imagery for classification.")
 
+# --- 6. Results ---
 elif page == "Results":
-    st.header("📋 Results")
-    st.info("View classification results and statistics here.")
-    st.success("Demo complete!")
+    st.header("📋 Results and Reports")
+    st.info("View classification accuracy, confusion matrices, and export results.")
