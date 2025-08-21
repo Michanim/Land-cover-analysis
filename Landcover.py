@@ -991,15 +991,21 @@ elif page == "⬇️ Downloads":
 
     # Check what data is available for download
     available_data = []
-    if st.session_state.df is not None:
+
+    # Safely check each data type
+    if 'df' in st.session_state and st.session_state.df is not None:
         available_data.append("Training Data (CSV)")
-    if st.session_state.feature_data is not None:
+
+    if 'feature_data' in st.session_state and st.session_state.feature_data is not None:
         available_data.append("Extracted Features (CSV)")
+
     if 'classified_data' in st.session_state and st.session_state.classified_data is not None:
-        available_data.append("Classification Results (CSV)")
-    if st.session_state.gdf is not None:
+        available_data.append("Classification Results (CSV/GeoJSON)")
+
+    if 'gdf' in st.session_state and st.session_state.gdf is not None:
         available_data.append("Area of Interest (GeoJSON)")
-    if st.session_state.trained_model is not None:
+
+    if 'trained_model' in st.session_state and st.session_state.trained_model is not None:
         available_data.append("Trained Model (Joblib)")
 
     if not available_data:
@@ -1014,119 +1020,128 @@ elif page == "⬇️ Downloads":
         available_data
     )
 
-    if download_option == "Training Data (CSV)" and st.session_state.df is not None:
-        st.markdown("""
-        <div class="info-box">
-        <p>Download your original training data as a CSV file.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        csv = st.session_state.df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Training Data CSV",
-            data=csv,
-            file_name="training_data.csv",
-            mime="text/csv",
-        )
-
-    elif download_option == "Extracted Features (CSV)" and st.session_state.feature_data is not None:
-        st.markdown("""
-        <div class="info-box">
-        <p>Download the features extracted from satellite imagery as a CSV file.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        csv = st.session_state.feature_data.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Extracted Features CSV",
-            data=csv,
-            file_name="extracted_features.csv",
-            mime="text/csv",
-        )
-
-    elif download_option == "Classification Results (CSV)" and 'classified_data' in st.session_state and st.session_state.classified_data is not None:
-        st.markdown("""
-        <div class="info-box">
-        <p>Download your classification results as a CSV file.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        csv = st.session_state.classified_data.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Classification Results CSV",
-            data=csv,
-            file_name="classification_results.csv",
-            mime="text/csv",
-        )
-
-        # Also offer GeoJSON download for spatial data
-        if 'longitude' in st.session_state.classified_data.columns and 'latitude' in st.session_state.classified_data.columns:
+    try:
+        if download_option == "Training Data (CSV)" and 'df' in st.session_state and st.session_state.df is not None:
             st.markdown("""
-            <div class="info-box" style="margin-top: 20px;">
-            <p>Download your classification results as a GeoJSON file for GIS applications.</p>
+            <div class="info-box">
+            <p>Download your original training data as a CSV file.</p>
             </div>
             """, unsafe_allow_html=True)
 
-            # Convert to GeoDataFrame
-            gdf = gpd.GeoDataFrame(
-                st.session_state.classified_data,
-                geometry=gpd.points_from_xy(
-                    st.session_state.classified_data.longitude,
-                    st.session_state.classified_data.latitude
-                ),
-                crs="EPSG:4326"
-            )
-
-            # Convert to GeoJSON
-            geojson_str = gdf.to_json()
-            geojson_bytes = geojson_str.encode('utf-8')
-
+            csv = st.session_state.df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Download Classification Results GeoJSON",
-                data=geojson_bytes,
-                file_name="classification_results.geojson",
-                mime="application/json",
+                label="📥 Download Training Data CSV",
+                data=csv,
+                file_name="training_data.csv",
+                mime="text/csv",
             )
 
-    elif download_option == "Area of Interest (GeoJSON)" and st.session_state.gdf is not None:
-        st.markdown("""
-        <div class="info-box">
-        <p>Download your original area of interest as a GeoJSON file.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        elif download_option == "Extracted Features (CSV)" and 'feature_data' in st.session_state and st.session_state.feature_data is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download the features extracted from satellite imagery as a CSV file.</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-        geojson_str = st.session_state.gdf.to_json()
-        geojson_bytes = geojson_str.encode('utf-8')
+            csv = st.session_state.feature_data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Extracted Features CSV",
+                data=csv,
+                file_name="extracted_features.csv",
+                mime="text/csv",
+            )
 
-        st.download_button(
-            label="📥 Download AOI GeoJSON",
-            data=geojson_bytes,
-            file_name="area_of_interest.geojson",
-            mime="application/json",
-        )
+        elif download_option == "Classification Results (CSV/GeoJSON)" and 'classified_data' in st.session_state and st.session_state.classified_data is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your classification results in CSV or GeoJSON format.</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-    elif download_option == "Trained Model (Joblib)" and st.session_state.trained_model is not None:
-        st.markdown("""
-        <div class="info-box">
-        <p>Download your trained machine learning model for later use.</p>
-        <p>This file can be loaded back into the application or used in other Python scripts.</p>
-        </div>
-        """, unsafe_allow_html=True)
+            # CSV download
+            csv = st.session_state.classified_data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Classification Results CSV",
+                data=csv,
+                file_name="classification_results.csv",
+                mime="text/csv",
+            )
 
-        import joblib
-        import io
+            # GeoJSON download if coordinates exist
+            if 'longitude' in st.session_state.classified_data.columns and 'latitude' in st.session_state.classified_data.columns:
+                try:
+                    # Convert to GeoDataFrame
+                    gdf = gpd.GeoDataFrame(
+                        st.session_state.classified_data,
+                        geometry=gpd.points_from_xy(
+                            st.session_state.classified_data.longitude,
+                            st.session_state.classified_data.latitude
+                        ),
+                        crs="EPSG:4326"
+                    )
 
-        # Create a buffer to hold the model
-        buffer = io.BytesIO()
-        joblib.dump(st.session_state.trained_model, buffer)
-        buffer.seek(0)
+                    # Convert to GeoJSON
+                    geojson_str = gdf.to_json()
+                    geojson_bytes = geojson_str.encode('utf-8')
 
-        st.download_button(
-            label="📥 Download Trained Model",
-            data=buffer,
-            file_name="trained_model.joblib",
-            mime="application/octet-stream",
-        )
+                    st.download_button(
+                        label="📥 Download Classification Results GeoJSON",
+                        data=geojson_bytes,
+                        file_name="classification_results.geojson",
+                        mime="application/json",
+                    )
+                except Exception as e:
+                    st.error(f"Error creating GeoJSON: {e}")
+
+        elif download_option == "Area of Interest (GeoJSON)" and 'gdf' in st.session_state and st.session_state.gdf is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your original area of interest as a GeoJSON file.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            try:
+                geojson_str = st.session_state.gdf.to_json()
+                geojson_bytes = geojson_str.encode('utf-8')
+
+                st.download_button(
+                    label="📥 Download AOI GeoJSON",
+                    data=geojson_bytes,
+                    file_name="area_of_interest.geojson",
+                    mime="application/json",
+                )
+            except Exception as e:
+                st.error(f"Error creating GeoJSON: {e}")
+
+        elif download_option == "Trained Model (Joblib)" and 'trained_model' in st.session_state and st.session_state.trained_model is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your trained machine learning model for later use.</p>
+            <p>This file can be loaded back into the application or used in other Python scripts.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            try:
+                import joblib
+                import io
+
+                # Create a buffer to hold the model
+                buffer = io.BytesIO()
+                joblib.dump(st.session_state.trained_model, buffer)
+                buffer.seek(0)
+
+                st.download_button(
+                    label="📥 Download Trained Model",
+                    data=buffer,
+                    file_name="trained_model.joblib",
+                    mime="application/octet-stream",
+                )
+            except Exception as e:
+                st.error(f"Error saving model: {e}")
+
+    except Exception as e:
+        st.error(f"An error occurred while preparing downloads: {e}")
+
 
     # Summary statistics
     st.subheader("📊 Classification Summary")
@@ -1214,4 +1229,5 @@ elif page == "⬇️ Downloads":
                 ax.set_ylabel(col)
                 plt.xticks(rotation=45)
                 st.pyplot(fig)
+
 
