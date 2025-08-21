@@ -53,14 +53,57 @@ if 'feature_data' not in st.session_state:
 
 # --- Earth Engine Authentication ---
 def authenticate_ee():
-    """Authenticate Google Earth Engine"""
+    """Authenticate Google Earth Engine with different methods"""
     try:
+        # Try to initialize with existing credentials first
         ee.Initialize()
-        return True
+        return True, "Initialized with existing credentials"
+    except Exception:
+        return False, "No existing credentials found"
+
+def authenticate_with_json_key(json_key_content):
+    """Authenticate using JSON service account key"""
+    try:
+        import tempfile
+        import json as json_module
+        
+        # Parse JSON content if it's a string
+        if isinstance(json_key_content, str):
+            credentials_dict = json_module.loads(json_key_content)
+        else:
+            credentials_dict = json_key_content
+        
+        # Create temporary file for credentials
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+            json_module.dump(credentials_dict, temp_file)
+            temp_file_path = temp_file.name
+        
+        # Create credentials object
+        from google.oauth2 import service_account
+        credentials = service_account.Credentials.from_service_account_file(
+            temp_file_path,
+            scopes=['https://www.googleapis.com/auth/earthengine']
+        )
+        
+        # Initialize Earth Engine with credentials
+        ee.Initialize(credentials)
+        
+        # Clean up temporary file
+        os.unlink(temp_file_path)
+        
+        return True, "Successfully authenticated with JSON key"
+        
     except Exception as e:
-        st.error(f"Earth Engine authentication failed: {e}")
-        st.info("Please run 'earthengine authenticate' in your terminal first")
-        return False
+        return False, f"Failed to authenticate with JSON key: {str(e)}"
+
+def authenticate_with_token():
+    """Authenticate using interactive token method"""
+    try:
+        ee.Authenticate()
+        ee.Initialize()
+        return True, "Successfully authenticated with token"
+    except Exception as e:
+        return False, f"Token authentication failed: {str(e)}"
 
 # --- Streamlit Page Config ---
 st.set_page_config(page_title="Land Cover Analysis", layout="wide")
@@ -173,10 +216,11 @@ if page == "🏠 Home":
     st.subheader("Getting Started")
     st.markdown("""
     1. **Upload Data**: Upload your AOI (GeoJSON) and training data (CSV)
-    2. **Download Satellite Data**: Get Sentinel-2 imagery for your area of interest
-    3. **Train Model**: Use your training data to build classification models
-    4. **Classify**: Apply the model to classify land cover types
-    5. **Analyze Results**: View accuracy metrics and export results
+    2. **Authenticate**: Set up Google Earth Engine authentication (JSON key recommended)
+    3. **Download Satellite Data**: Get Sentinel-2 imagery for your area of interest
+    4. **Train Model**: Use your training data to build classification models
+    5. **Classify**: Apply the model to classify land cover types
+    6. **Analyze Results**: View accuracy metrics and export results
     """)
 
 # --- 1. Data Upload ---
@@ -256,19 +300,100 @@ elif page == "🛰️ Satellite Data":
         st.error("Google Earth Engine is not available. Please install earthengine-api.")
         st.stop()
     
-    # Authentication check
-    if st.button("🔐 Authenticate Google Earth Engine"):
-        if authenticate_ee():
-            st.success("✅ Earth Engine authenticated successfully!")
-        else:
-            st.error("❌ Authentication failed")
-            st.stop()
+    # Earth Engine Authentication Section
+    st.subheader("🔐 Earth Engine Authentication")
+    
+    # Check current authentication status
+    auth_success, auth_message = authenticate_ee()
+    
+    if auth_success:
+        st.success(f"✅ {auth_message}")
+    else:
+        st.warning(f"⚠️ {auth_message}")
+        
+        # Authentication options
+        auth_method = st.radio(
+            "Choose authentication method:",
+            ["JSON Service Account Key", "Interactive Token", "Manual Terminal"],
+            horizontal=True
+        )
+        
+        if auth_method == "JSON Service Account Key":
+            st.info("Upload your Google Earth Engine service account JSON key file")
+            
+            # Option 1: File upload
+            json_key_file = st.file_uploader(
+                "Upload JSON Key File", 
+                type=["json"],
+                help="Upload your Earth Engine service account JSON key file"
+            )
+            
+            # Option 2: Text input
+            st.markdown("**Or paste JSON key content:**")
+            json_key_text = st.text_area(
+                "JSON Key Content",
+                placeholder='{\n  "type": "service_account",\n  "project_id": "your-project",\n  ...\n}',
+                height=150,
+                help="Paste the entire content of your JSON key file here"
+            )
+            
+            if st.button("🔑 Authenticate with JSON Key"):
+                json_content = None
+                
+                if json_key_file is not None:
+                    json_content = json_key_file.read().decode('utf-8')
+                elif json_key_text.strip():
+                    json_content = json_key_text.strip()
+                
+                if json_content:
+                    with st.spinner("🔄 Authenticating..."):
+                        success, message = authenticate_with_json_key(json_content)
+                        
+                    if success:
+                        st.success(f"✅ {message}")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {message}")
+                else:
+                    st.error("Please provide JSON key content either by file upload or text input")
+        
+        elif auth_method == "Interactive Token":
+            st.info("This will open a browser window for authentication")
+            st.warning("Note: This method may not work in some deployment environments")
+            
+            if st.button("🌐 Authenticate with Token"):
+                with st.spinner("🔄 Opening authentication window..."):
+                    success, message = authenticate_with_token()
+                    
+                if success:
+                    st.success(f"✅ {message}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {message}")
+        
+        elif auth_method == "Manual Terminal":
+            st.info("Run the following command in your terminal:")
+            st.code("earthengine authenticate", language="bash")
+            st.info("Then restart this application")
+            
+            if st.button("🔄 Check Authentication"):
+                success, message = authenticate_ee()
+                if success:
+                    st.success(f"✅ {message}")
+                    st.rerun()
+                else:
+                    st.error("❌ Authentication still not working. Please try again.")
+    
+    # Only show download options if authenticated
+    if not auth_success:
+        st.stop()
     
     if st.session_state.gdf is None:
         st.warning("⚠️ Please upload an AOI (GeoJSON) first in the Data Upload section")
         st.stop()
     
-    st.subheader("Download Parameters")
+    st.markdown("---")
+    st.subheader("📡 Download Parameters")
     
     col1, col2 = st.columns(2)
     
