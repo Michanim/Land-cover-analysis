@@ -10,7 +10,7 @@ from datetime import datetime, date
 import zipfile
 import os
 import tempfile
-import plotly.express as px  # Added Plotly Express import
+import plotly.express as px
 
 # ML imports
 from sklearn.model_selection import train_test_split
@@ -56,6 +56,10 @@ if 'ee_authenticated' not in st.session_state:
     st.session_state.ee_authenticated = False
 if 'classified_data' not in st.session_state:
     st.session_state.classified_data = None
+if 'new_aoi_gdf' not in st.session_state:
+    st.session_state.new_aoi_gdf = None
+if 'new_classification_results' not in st.session_state:
+    st.session_state.new_classification_results = None
 
 # --- Earth Engine Authentication ---
 def authenticate_ee():
@@ -221,6 +225,82 @@ def extract_features_from_image(image, geometry):
         st.error(f"Error extracting features: {e}")
         return None
 
+def classify_new_aoi(new_aoi_gdf, trained_model, start_date, end_date, cloud_cover):
+    """Classify a new AOI using the trained model"""
+    if not EE_AVAILABLE:
+        st.error("Earth Engine not available")
+        return None
+    
+    try:
+        with st.spinner("🔄 Processing new AOI..."):
+            # Convert GeoDataFrame to Earth Engine geometry
+            geom_json = json.loads(new_aoi_gdf.to_json())
+            ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
+
+            # Create image collection
+            collection = ee.ImageCollection('COPERNICUS/S2_SR') \
+                .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
+                .filterBounds(ee_geom) \
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+
+            # Check if collection is empty
+            size = collection.size()
+            if size.getInfo() == 0:
+                st.error("No images found for the specified criteria. Try adjusting the date range or increasing the cloud cover threshold.")
+                return None
+
+            st.success(f"✅ Found {size.getInfo()} images")
+
+            # Create median composite
+            image = collection.map(mask_clouds).median().clip(ee_geom)
+
+            # Add spectral indices
+            image = calculate_ndvi(image)
+            image = calculate_ndwi(image)
+
+            # Extract features for classification
+            features = extract_features_from_image(image, ee_geom)
+            if features:
+                # Convert to DataFrame
+                feature_info = features.getInfo()
+                if feature_info and 'features' in feature_info:
+                    feature_data = []
+                    for feature in feature_info['features']:
+                        props = feature['properties']
+                        # Add geometry info
+                        if 'geometry' in feature and feature['geometry']['type'] == 'Point':
+                            coords = feature['geometry']['coordinates']
+                            props['longitude'] = coords[0]
+                            props['latitude'] = coords[1]
+                        feature_data.append(props)
+
+                    feature_df = pd.DataFrame(feature_data)
+                    
+                    # Prepare features for prediction
+                    feature_cols = trained_model['feature_cols']
+                    X = feature_df[feature_cols].fillna(0)
+                    
+                    # Scale features
+                    X_scaled = trained_model['scaler'].transform(X)
+                    
+                    # Make predictions
+                    predictions = trained_model['model'].predict(X_scaled)
+                    prediction_probs = trained_model['model'].predict_proba(X_scaled)
+                    
+                    # Decode labels
+                    predicted_labels = trained_model['label_encoder'].inverse_transform(predictions)
+                    
+                    # Add predictions to dataframe
+                    feature_df['predicted_class'] = predicted_labels
+                    feature_df['prediction_confidence'] = prediction_probs.max(axis=1)
+                    
+                    return feature_df
+                    
+        return None
+    except Exception as e:
+        st.error(f"Error classifying new AOI: {e}")
+        return None
+
 # --- Title ---
 st.title("🌍 Advanced Land Cover Analysis Dashboard")
 st.markdown("*Powered by Google Earth Engine and Machine Learning*")
@@ -340,6 +420,125 @@ elif page == "📂 Data Upload":
 
             except Exception as e:
                 st.markdown(f'<div class="error-box">❌ Error loading GeoJSON: {e}</div>', unsafe_allow_html=True)
+                
+        # New AOI upload for classification (only show if model is trained)
+        if st.session_state.trained_model is not None:
+            st.subheader("New AOI for Classification")
+            new_aoi_file = st.file_uploader("Upload a new AOI to classify", type=["geojson"], key="new_aoi_upload")
+            
+            if new_aoi_file is not None:
+                try:
+                    new_aoi_gdf = gpd.read_file(io.BytesIO(new_aoi_file.read()))
+
+                    # Ensure CRS is WGS84
+                    if new_aoi_gdf.crs is None or new_aoi_gdf.crs.to_string() != "EPSG:4326":
+                        new_aoi_gdf = new_aoi_gdf.to_crs("EPSG:4326")
+
+                    st.session_state.new_aoi_gdf = new_aoi_gdf
+                    st.markdown('<div class="success-box">✅ New AOI loaded successfully!</div>', unsafe_allow_html=True)
+
+                    st.write("**New AOI Overview:**")
+                    st.write(f"Features: {len(new_aoi_gdf)}")
+                    st.write(f"Area: {new_aoi_gdf.geometry.area.sum():.4f} degrees²")
+
+                    # Display new AOI on map
+                    center = [new_aoi_gdf.geometry.centroid.y.mean(), new_aoi_gdf.geometry.centroid.x.mean()]
+                    m = folium.Map(location=center, zoom_start=12, tiles="OpenStreetMap")
+
+                    folium.GeoJson(
+                        new_aoi_gdf,
+                        style_function=lambda feature: {
+                            'fillColor': 'lightgreen',
+                            'color': 'green',
+                            'weight': 2,
+                            'fillOpacity': 0.3,
+                        }
+                    ).add_to(m)
+
+                    st_folium(m, width=700, height=400)
+                    
+                    # Classification parameters for new AOI
+                    st.subheader("Classification Parameters")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        start_date = st.date_input(
+                            "Start Date",
+                            value=date(2023, 1, 1),
+                            help="Start date for image collection",
+                            key="new_aoi_start_date"
+                        )
+
+                    with col2:
+                        end_date = st.date_input(
+                            "End Date",
+                            value=date(2023, 12, 31),
+                            help="End date for image collection",
+                            key="new_aoi_end_date"
+                        )
+                    
+                    cloud_cover = st.slider(
+                        "Maximum Cloud Cover (%)",
+                        min_value=0,
+                        max_value=100,
+                        value=20,
+                        help="Filter images by cloud cover percentage",
+                        key="new_aoi_cloud_cover"
+                    )
+                    
+                    if st.button("🌍 Classify New AOI", key="classify_new_aoi_btn"):
+                        results = classify_new_aoi(
+                            new_aoi_gdf, 
+                            st.session_state.trained_model,
+                            start_date,
+                            end_date,
+                            cloud_cover
+                        )
+                        
+                        if results is not None:
+                            st.session_state.new_classification_results = results
+                            st.success("✅ New AOI classified successfully!")
+                            
+                            # Show classification results
+                            st.subheader("Classification Results")
+                            st.write(f"Total pixels classified: {len(results)}")
+                            
+                            # Class distribution
+                            class_counts = results['predicted_class'].value_counts()
+                            st.write("**Class Distribution:**")
+                            st.write(class_counts)
+                            
+                            # Confidence statistics
+                            avg_confidence = results['prediction_confidence'].mean()
+                            st.write(f"**Average Confidence:** {avg_confidence:.3f}")
+                            
+                            # Show sample results
+                            st.write("**Sample Results:**")
+                            st.write(results.head())
+                            
+                            # Create a simple map visualization
+                            if 'longitude' in results.columns and 'latitude' in results.columns:
+                                st.subheader("Spatial Distribution")
+                                
+                                # Create a sample for faster rendering
+                                sample_size = min(1000, len(results))
+                                sample_df = results.sample(sample_size, random_state=42)
+                                
+                                fig = px.scatter_mapbox(
+                                    sample_df,
+                                    lat='latitude',
+                                    lon='longitude',
+                                    color='predicted_class',
+                                    hover_data=['prediction_confidence'],
+                                    zoom=10,
+                                    height=500,
+                                    title="Land Cover Classification"
+                                )
+                                fig.update_layout(mapbox_style="open-street-map")
+                                st.plotly_chart(fig, use_container_width=True)
+
+                except Exception as e:
+                    st.markdown(f'<div class="error-box">❌ Error loading new AOI: {e}</div>', unsafe_allow_html=True)
 
 # --- 2. Satellite Data Download ---
 elif page == "🛰️ Satellite Data":
@@ -978,6 +1177,94 @@ elif page == "📋 Results":
         st.stop()
 
     df = st.session_state.classified_data
+
+    # Summary statistics
+    st.subheader("📊 Classification Summary")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Total Pixels Classified", len(df))
+
+    with col2:
+        st.metric("Number of Classes", df['predicted_class'].nunique())
+
+    with col3:
+        avg_confidence = df['prediction_confidence'].mean()
+        st.metric("Average Confidence", f"{avg_confidence:.3f}")
+
+    with col4:
+        high_confidence = (df['prediction_confidence'] > 0.8).sum()
+        st.metric("High Confidence Predictions", f"{high_confidence} ({100*high_confidence/len(df):.1f}%)")
+
+    # Detailed analysis
+    st.subheader("🔍 Detailed Analysis")
+
+    tabs = st.tabs(["Class Statistics", "Spatial Distribution", "Confidence Analysis", "Feature Analysis"])
+
+    with tabs[0]:
+        # Class statistics
+        class_stats = df.groupby('predicted_class').agg({
+            'prediction_confidence': ['count', 'mean', 'std'],
+            'NDVI': ['mean', 'std'] if 'NDVI' in df.columns else lambda x: None,
+            'NDWI': ['mean', 'std'] if 'NDWI' in df.columns else lambda x: None
+        }).round(3)
+
+        st.write(class_stats)
+
+    with tabs[1]:
+        if 'longitude' in df.columns and 'latitude' in df.columns:
+            st.subheader("🗺️ Spatial Distribution Map")
+            try:
+                fig = px.scatter_mapbox(
+                    df,
+                    lat='latitude',
+                    lon='longitude',
+                    color='predicted_class',
+                    zoom=10,
+                    height=600,
+                    title="Predicted Land Cover Classes"
+                )
+                fig.update_layout(mapbox_style="open-street-map")
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error creating spatial distribution map: {e}")
+                st.write("Make sure you have a valid Mapbox token or use another map style.")
+                # Fallback to a simpler plot
+                fig, ax = plt.subplots(figsize=(10, 6))
+                for land_class in df['predicted_class'].unique():
+                    class_df = df[df['predicted_class'] == land_class]
+                    ax.scatter(class_df['longitude'], class_df['latitude'],
+                              label=land_class, alpha=0.5, s=10)
+                ax.set_title('Spatial Distribution of Predicted Classes')
+                ax.set_xlabel('Longitude')
+                ax.set_ylabel('Latitude')
+                ax.legend()
+                st.pyplot(fig)
+
+    with tabs[2]:
+        st.subheader("📊 Confidence Analysis")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.boxplot(data=df, x='predicted_class', y='prediction_confidence', ax=ax)
+        ax.set_title('Prediction Confidence by Class')
+        ax.set_xlabel('Land Cover Class')
+        ax.set_ylabel('Prediction Confidence')
+        plt.xticks(rotation=45)
+        st.pyplot(fig)
+
+    with tabs[3]:
+        st.subheader("🔍 Feature Analysis by Class")
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols[:5]:  # Show first 5 numeric features
+            if col not in ['longitude', 'latitude', 'prediction_confidence']:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sns.boxplot(data=df, x='predicted_class', y=col, ax=ax)
+                ax.set_title(f'Distribution of {col} by Class')
+                ax.set_xlabel('Land Cover Class')
+                ax.set_ylabel(col)
+                plt.xticks(rotation=45)
+                st.pyplot(fig)
+
 # --- 7. Downloads ---
 elif page == "⬇️ Downloads":
     st.header("⬇️ Download Results")
@@ -1007,6 +1294,9 @@ elif page == "⬇️ Downloads":
 
     if 'trained_model' in st.session_state and st.session_state.trained_model is not None:
         available_data.append("Trained Model (Joblib)")
+
+    if 'new_classification_results' in st.session_state and st.session_state.new_classification_results is not None:
+        available_data.append("New AOI Classification Results (CSV/GeoJSON)")
 
     if not available_data:
         st.warning("⚠️ No data available for download. Please process some data first.")
@@ -1138,96 +1428,48 @@ elif page == "⬇️ Downloads":
                 )
             except Exception as e:
                 st.error(f"Error saving model: {e}")
+                
+        elif download_option == "New AOI Classification Results (CSV/GeoJSON)" and 'new_classification_results' in st.session_state and st.session_state.new_classification_results is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your new AOI classification results in CSV or GeoJSON format.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # CSV download
+            csv = st.session_state.new_classification_results.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download New AOI Classification Results CSV",
+                data=csv,
+                file_name="new_aoi_classification_results.csv",
+                mime="text/csv",
+            )
+
+            # GeoJSON download if coordinates exist
+            if 'longitude' in st.session_state.new_classification_results.columns and 'latitude' in st.session_state.new_classification_results.columns:
+                try:
+                    # Convert to GeoDataFrame
+                    gdf = gpd.GeoDataFrame(
+                        st.session_state.new_classification_results,
+                        geometry=gpd.points_from_xy(
+                            st.session_state.new_classification_results.longitude,
+                            st.session_state.new_classification_results.latitude
+                        ),
+                        crs="EPSG:4326"
+                    )
+
+                    # Convert to GeoJSON
+                    geojson_str = gdf.to_json()
+                    geojson_bytes = geojson_str.encode('utf-8')
+
+                    st.download_button(
+                        label="📥 Download New AOI Classification Results GeoJSON",
+                        data=geojson_bytes,
+                        file_name="new_aoi_classification_results.geojson",
+                        mime="application/json",
+                    )
+                except Exception as e:
+                    st.error(f"Error creating GeoJSON: {e}")
 
     except Exception as e:
         st.error(f"An error occurred while preparing downloads: {e}")
-
-
-    # Summary statistics
-    st.subheader("📊 Classification Summary")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric("Total Pixels Classified", len(df))
-
-    with col2:
-        st.metric("Number of Classes", df['predicted_class'].nunique())
-
-    with col3:
-        avg_confidence = df['prediction_confidence'].mean()
-        st.metric("Average Confidence", f"{avg_confidence:.3f}")
-
-    with col4:
-        high_confidence = (df['prediction_confidence'] > 0.8).sum()
-        st.metric("High Confidence Predictions", f"{high_confidence} ({100*high_confidence/len(df):.1f}%)")
-
-    # Detailed analysis
-    st.subheader("🔍 Detailed Analysis")
-
-    tabs = st.tabs(["Class Statistics", "Spatial Distribution", "Confidence Analysis", "Feature Analysis"])
-
-    with tabs[0]:
-        # Class statistics
-        class_stats = df.groupby('predicted_class').agg({
-            'prediction_confidence': ['count', 'mean', 'std'],
-            'NDVI': ['mean', 'std'] if 'NDVI' in df.columns else lambda x: None,
-            'NDWI': ['mean', 'std'] if 'NDWI' in df.columns else lambda x: None
-        }).round(3)
-
-        st.write(class_stats)
-
-    with tabs[1]:
-        if 'longitude' in df.columns and 'latitude' in df.columns:
-            st.subheader("🗺️ Spatial Distribution Map")
-            try:
-                fig = px.scatter_mapbox(
-                    df,
-                    lat='latitude',
-                    lon='longitude',
-                    color='predicted_class',
-                    zoom=10,
-                    height=600,
-                    title="Predicted Land Cover Classes"
-                )
-                fig.update_layout(mapbox_style="open-street-map")
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.error(f"Error creating spatial distribution map: {e}")
-                st.write("Make sure you have a valid Mapbox token or use another map style.")
-                # Fallback to a simpler plot
-                fig, ax = plt.subplots(figsize=(10, 6))
-                for land_class in df['predicted_class'].unique():
-                    class_df = df[df['predicted_class'] == land_class]
-                    ax.scatter(class_df['longitude'], class_df['latitude'],
-                              label=land_class, alpha=0.5, s=10)
-                ax.set_title('Spatial Distribution of Predicted Classes')
-                ax.set_xlabel('Longitude')
-                ax.set_ylabel('Latitude')
-                ax.legend()
-                st.pyplot(fig)
-
-    with tabs[2]:
-        st.subheader("📊 Confidence Analysis")
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.boxplot(data=df, x='predicted_class', y='prediction_confidence', ax=ax)
-        ax.set_title('Prediction Confidence by Class')
-        ax.set_xlabel('Land Cover Class')
-        ax.set_ylabel('Prediction Confidence')
-        plt.xticks(rotation=45)
-        st.pyplot(fig)
-
-    with tabs[3]:
-        st.subheader("🔍 Feature Analysis by Class")
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols[:5]:  # Show first 5 numeric features
-            if col not in ['longitude', 'latitude', 'prediction_confidence']:
-                fig, ax = plt.subplots(figsize=(10, 6))
-                sns.boxplot(data=df, x='predicted_class', y=col, ax=ax)
-                ax.set_title(f'Distribution of {col} by Class')
-                ax.set_xlabel('Land Cover Class')
-                ax.set_ylabel(col)
-                plt.xticks(rotation=45)
-                st.pyplot(fig)
-
-
