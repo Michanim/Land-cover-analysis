@@ -150,7 +150,7 @@ st.markdown(
         border-left: 5px solid #0c5460;
     }
     .metric-card {
-        background: white;
+        background: black;
         padding: 20px;
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -1473,3 +1473,4 @@ elif page == "⬇️ Downloads":
 
     except Exception as e:
         st.error(f"An error occurred while preparing downloads: {e}")
+
