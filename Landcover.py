@@ -80,19 +80,16 @@ def authenticate_with_json_key(json_key_content):
             credentials_dict = json.loads(json_key_content)
         else:
             credentials_dict = json_key_content
-
         # Create credentials object
         from google.oauth2 import service_account
         credentials = service_account.Credentials.from_service_account_info(
             credentials_dict,
             scopes=['https://www.googleapis.com/auth/earthengine']
         )
-
         # Initialize Earth Engine with credentials
         ee.Initialize(credentials)
         st.session_state.ee_authenticated = True
         return True, "Successfully authenticated with JSON key"
-
     except Exception as e:
         st.session_state.ee_authenticated = False
         return False, f"Failed to authenticate with JSON key: {str(e)}"
@@ -107,6 +104,121 @@ def authenticate_with_token():
     except Exception as e:
         st.session_state.ee_authenticated = False
         return False, f"Token authentication failed: {str(e)}"
+
+# --- Helper Functions ---
+def calculate_ndvi(image):
+    """Calculate NDVI from Sentinel-2 bands"""
+    if EE_AVAILABLE:
+        ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+        return image.addBands(ndvi)
+    return None
+
+def calculate_ndwi(image):
+    """Calculate NDWI for water detection"""
+    if EE_AVAILABLE:
+        ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
+        return image.addBands(ndwi)
+    return None
+
+def mask_clouds(image):
+    """Mask clouds in Sentinel-2 imagery using the SCL band."""
+    if EE_AVAILABLE:
+        # SCL band values for cloud classes (3: cloud shadow, 8: cloud, 9: cirrus, 10: snow/ice)
+        cloud_mask = image.select('SCL').neq(3).And(
+            image.select('SCL').neq(8)).And(
+            image.select('SCL').neq(9)).And(
+            image.select('SCL').neq(10))
+        return image.updateMask(cloud_mask).divide(10000)
+    return None
+
+def extract_features_from_image(image, geometry):
+    """Extract spectral features from image within geometry"""
+    if not EE_AVAILABLE:
+        return None
+    try:
+        # Add spectral indices
+        image = calculate_ndvi(image)
+        image = calculate_ndwi(image)
+        # Sample the image
+        sample = image.sample(
+            region=geometry,
+            scale=10,
+            numPixels=1000,
+            geometries=True
+        )
+        return sample
+    except Exception as e:
+        st.error(f"Error extracting features: {e}")
+        return None
+
+def classify_new_aoi(new_aoi_gdf, trained_model, start_date, end_date, cloud_cover):
+    """Classify a new AOI using the trained model"""
+    if not EE_AVAILABLE:
+        st.error("Earth Engine not available")
+        return None
+
+    try:
+        with st.spinner("🔄 Processing new AOI..."):
+            # Convert GeoDataFrame to Earth Engine geometry
+            geom_json = json.loads(new_aoi_gdf.to_json())
+            ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
+            # Create image collection
+            collection = ee.ImageCollection('COPERNICUS/S2_SR') \
+                .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
+                .filterBounds(ee_geom) \
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+            # Check if collection is empty
+            size = collection.size()
+            if size.getInfo() == 0:
+                st.error("No images found for the specified criteria. Try adjusting the date range or increasing the cloud cover threshold.")
+                return None
+            st.success(f"✅ Found {size.getInfo()} images")
+            # Create median composite
+            image = collection.map(mask_clouds).median().clip(ee_geom)
+            # Add spectral indices
+            image = calculate_ndvi(image)
+            image = calculate_ndwi(image)
+            # Extract features for classification
+            features = extract_features_from_image(image, ee_geom)
+            if features:
+                # Convert to DataFrame
+                feature_info = features.getInfo()
+                if feature_info and 'features' in feature_info:
+                    feature_data = []
+                    for feature in feature_info['features']:
+                        props = feature['properties']
+                        # Add geometry info
+                        if 'geometry' in feature and feature['geometry']['type'] == 'Point':
+                            coords = feature['geometry']['coordinates']
+                            props['longitude'] = coords[0]
+                            props['latitude'] = coords[1]
+                        feature_data.append(props)
+                    feature_df = pd.DataFrame(feature_data)
+
+                    # Prepare features for prediction
+                    feature_cols = trained_model['feature_cols']
+                    X = feature_df[feature_cols].fillna(0)
+
+                    # Scale features
+                    X_scaled = trained_model['scaler'].transform(X)
+
+                    # Make predictions
+                    predictions = trained_model['model'].predict(X_scaled)
+                    prediction_probs = trained_model['model'].predict_proba(X_scaled)
+
+                    # Decode labels
+                    predicted_labels = trained_model['label_encoder'].inverse_transform(predictions)
+
+                    # Add predictions to dataframe
+                    feature_df['predicted_class'] = predicted_labels
+                    feature_df['prediction_confidence'] = prediction_probs.max(axis=1)
+
+                    return feature_df
+
+        return None
+    except Exception as e:
+        st.error(f"Error classifying new AOI: {e}")
+        return None
 
 # --- Streamlit Page Config ---
 st.set_page_config(page_title="Land Cover Analysis", layout="wide")
@@ -177,219 +289,41 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- Helper Functions ---
-def calculate_ndvi(image):
-    """Calculate NDVI from Sentinel-2 bands"""
-    if EE_AVAILABLE:
-        ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-        return image.addBands(ndvi)
-    return None
-
-def calculate_ndwi(image):
-    """Calculate NDWI for water detection"""
-    if EE_AVAILABLE:
-        ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
-        return image.addBands(ndwi)
-    return None
-
-def calculate_additional_indices(image):
-    """Calculate additional spectral indices"""
-    if EE_AVAILABLE:
-        # Enhanced Vegetation Index (EVI)
-        evi = image.expression(
-            '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
-            {
-                'NIR': image.select('B8'),
-                'RED': image.select('B4'),
-                'BLUE': image.select('B2')
-            }
-        ).rename('EVI')
-        
-        # Normalized Difference Built-up Index (NDBI)
-        ndbi = image.normalizedDifference(['B11', 'B8']).rename('NDBI')
-        
-        # Bare Soil Index (BSI)
-        bsi = image.expression(
-            '((SWIR1 + RED) - (NIR + BLUE)) / ((SWIR1 + RED) + (NIR + BLUE))',
-            {
-                'SWIR1': image.select('B11'),
-                'RED': image.select('B4'),
-                'NIR': image.select('B8'),
-                'BLUE': image.select('B2')
-            }
-        ).rename('BSI')
-        
-        return image.addBands([evi, ndbi, bsi])
-    return None
-
-def mask_clouds_sr(image):
-    """Mask clouds in Sentinel-2 Surface Reflectance imagery using SCL band"""
-    if EE_AVAILABLE:
-        # Get the Scene Classification Layer (SCL) band
-        scl = image.select('SCL')
-        
-        # Create masks for different conditions
-        # SCL values: 0=NODATA, 1=SATURATED_DEFECTIVE, 2=DARK_AREA_PIXELS, 3=CLOUD_SHADOWS, 
-        # 4=VEGETATION, 5=NOT_VEGETATED, 6=WATER, 7=UNCLASSIFIED, 8=CLOUD_MEDIUM_PROBABILITY, 
-        # 9=CLOUD_HIGH_PROBABILITY, 10=THIN_CIRRUS, 11=SNOW_ICE
-        
-        # Keep pixels that are vegetation (4), not vegetated (5), water (6), or unclassified (7)
-        # Exclude clouds (8,9), cloud shadows (3), cirrus (10), snow/ice (11), saturated (1), nodata (0)
-        clear_mask = scl.eq(4).Or(scl.eq(5)).Or(scl.eq(6)).Or(scl.eq(7)).Or(scl.eq(2))
-        
-        # Apply mask and scale to reflectance values (SR data is already scaled)
-        return image.updateMask(clear_mask)
-    return None
-
-def extract_features_from_image(image, geometry):
-    """Extract spectral features from image within geometry"""
-    if not EE_AVAILABLE:
-        return None
-
-    try:
-        # Add spectral indices
-        image = calculate_ndvi(image)
-        image = calculate_ndwi(image)
-        image = calculate_additional_indices(image)
-
-        # Sample the image with more points for better coverage
-        sample = image.sample(
-            region=geometry,
-            scale=10,
-            numPixels=5000,  # Increased from 1000
-            geometries=True
-        )
-
-        return sample
-    except Exception as e:
-        st.error(f"Error extracting features: {e}")
-        return None
-
-def classify_new_aoi(new_aoi_gdf, trained_model, start_date, end_date, cloud_cover):
-    """Classify a new AOI using the trained model"""
-    if not EE_AVAILABLE:
-        st.error("Earth Engine not available")
-        return None
-    
-    try:
-        with st.spinner("Processing new AOI..."):
-            # Convert GeoDataFrame to Earth Engine geometry
-            geom_json = json.loads(new_aoi_gdf.to_json())
-            ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
-
-            # Create image collection
-            collection = ee.ImageCollection('COPERNICUS/S2_SR') \
-                .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
-                .filterBounds(ee_geom) \
-                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
-
-            # Check if collection is empty
-            size = collection.size()
-            if size.getInfo() == 0:
-                st.error("No images found for the specified criteria. Try adjusting the date range or increasing the cloud cover threshold.")
-                return None
-
-            st.success(f"Found {size.getInfo()} images")
-
-            # Create median composite
-            image = collection.map(mask_clouds_sr).median().clip(ee_geom)
-
-            # Add spectral indices
-            image = calculate_ndvi(image)
-            image = calculate_ndwi(image)
-            image = calculate_additional_indices(image)
-
-            # Extract features for classification
-            features = extract_features_from_image(image, ee_geom)
-            if features:
-                # Convert to DataFrame
-                feature_info = features.getInfo()
-                if feature_info and 'features' in feature_info:
-                    feature_data = []
-                    for feature in feature_info['features']:
-                        props = feature['properties']
-                        # Add geometry info
-                        if 'geometry' in feature and feature['geometry']['type'] == 'Point':
-                            coords = feature['geometry']['coordinates']
-                            props['longitude'] = coords[0]
-                            props['latitude'] = coords[1]
-                        feature_data.append(props)
-
-                    feature_df = pd.DataFrame(feature_data)
-                    
-                    # Prepare features for prediction
-                    feature_cols = trained_model['feature_cols']
-                    
-                    # Check if all required features are available
-                    available_cols = [col for col in feature_cols if col in feature_df.columns]
-                    if len(available_cols) != len(feature_cols):
-                        missing_cols = set(feature_cols) - set(available_cols)
-                        st.warning(f"Missing features: {missing_cols}. Using available features only.")
-                        feature_cols = available_cols
-                    
-                    X = feature_df[feature_cols].fillna(0)
-                    
-                    # Scale features
-                    X_scaled = trained_model['scaler'].transform(X)
-                    
-                    # Make predictions
-                    predictions = trained_model['model'].predict(X_scaled)
-                    prediction_probs = trained_model['model'].predict_proba(X_scaled)
-                    
-                    # Decode labels
-                    predicted_labels = trained_model['label_encoder'].inverse_transform(predictions)
-                    
-                    # Add predictions to dataframe
-                    feature_df['predicted_class'] = predicted_labels
-                    feature_df['prediction_confidence'] = prediction_probs.max(axis=1)
-                    
-                    return feature_df
-                    
-        return None
-    except Exception as e:
-        st.error(f"Error classifying new AOI: {e}")
-        return None
-
 # --- Title ---
-st.title("Advanced Land Cover Analysis Dashboard")
+st.title("🌍 Advanced Land Cover Analysis Dashboard")
 st.markdown("*Powered by Google Earth Engine and Machine Learning*")
 
 # --- Navigation ---
 page = st.radio("Navigate", [
-    "Home", "Data Upload", "Satellite Data", "Visualization",
-    "Model Training", "Classification", "Results", "Downloads"
+    "🏠 Home", "📂 Data Upload", "🛰️ Satellite Data", "📊 Visualization",
+    "🤖 Model Training", "🗺️ Classification", "📋 Results", "⬇️ Downloads"
 ], horizontal=True)
 
 # --- Home Page ---
-if page == "Home":
+if page == "🏠 Home":
     st.header("Welcome to Land Cover Analysis Dashboard")
-
     col1, col2, col3 = st.columns(3)
-
     with col1:
         st.markdown("""
         <div class="metric-card">
-        <h3>Satellite Data</h3>
+        <h3>🛰️ Satellite Data</h3>
         <p>Download Sentinel-2 imagery from Google Earth Engine with custom date ranges and AOI</p>
         </div>
         """, unsafe_allow_html=True)
-
     with col2:
         st.markdown("""
         <div class="metric-card">
-        <h3>ML Classification</h3>
+        <h3>🤖 ML Classification</h3>
         <p>Train machine learning models to classify land cover types: Forest, Water, Urban, Agriculture</p>
         </div>
         """, unsafe_allow_html=True)
-
     with col3:
         st.markdown("""
         <div class="metric-card">
-        <h3>Analytics</h3>
+        <h3>📊 Analytics</h3>
         <p>Visualize results with interactive maps, charts, and comprehensive reports</p>
         </div>
         """, unsafe_allow_html=True)
-
     st.markdown("---")
     st.subheader("Getting Started")
     st.markdown("""
@@ -402,59 +336,45 @@ if page == "Home":
     """)
 
 # --- 1. Data Upload ---
-elif page == "Data Upload":
-    st.header("Upload Data")
-
+elif page == "📂 Data Upload":
+    st.header("📂 Upload Data")
     col1, col2 = st.columns(2)
-
     with col1:
         st.subheader("Training Dataset (CSV)")
         uploaded_file = st.file_uploader("Upload your training dataset", type=["csv"], key="csv_upload")
-
         if uploaded_file is not None:
             try:
                 df = pd.read_csv(uploaded_file)
                 st.session_state.df = df
-                st.markdown('<div class="success-box">CSV loaded successfully!</div>', unsafe_allow_html=True)
-
+                st.markdown('<div class="success-box">✅ CSV loaded successfully!</div>', unsafe_allow_html=True)
                 st.write("**Dataset Overview:**")
                 st.write(f"Shape: {df.shape}")
                 st.write(df.head())
-
                 # Show column info
                 st.write("**Columns:**", list(df.columns))
-
                 # Detect potential label columns
                 potential_labels = [col for col in df.columns if 'class' in col.lower() or 'label' in col.lower() or 'type' in col.lower()]
                 if potential_labels:
                     st.info(f"Potential label columns detected: {potential_labels}")
-
             except Exception as e:
-                st.markdown(f'<div class="error-box">Error loading CSV: {e}</div>', unsafe_allow_html=True)
-
+                st.markdown(f'<div class="error-box">❌ Error loading CSV: {e}</div>', unsafe_allow_html=True)
     with col2:
         st.subheader("Area of Interest (GeoJSON)")
         geojson_file = st.file_uploader("Upload your AOI boundary", type=["geojson"], key="geojson_upload")
-
         if geojson_file is not None:
             try:
                 gdf = gpd.read_file(io.BytesIO(geojson_file.read()))
-
                 # Ensure CRS is WGS84
                 if gdf.crs is None or gdf.crs.to_string() != "EPSG:4326":
                     gdf = gdf.to_crs("EPSG:4326")
-
                 st.session_state.gdf = gdf
-                st.markdown('<div class="success-box">GeoJSON loaded successfully!</div>', unsafe_allow_html=True)
-
+                st.markdown('<div class="success-box">✅ GeoJSON loaded successfully!</div>', unsafe_allow_html=True)
                 st.write("**AOI Overview:**")
                 st.write(f"Features: {len(gdf)}")
                 st.write(f"Area: {gdf.geometry.area.sum():.4f} degrees²")
-
                 # Display AOI on map
                 center = [gdf.geometry.centroid.y.mean(), gdf.geometry.centroid.x.mean()]
                 m = folium.Map(location=center, zoom_start=12, tiles="OpenStreetMap")
-
                 folium.GeoJson(
                     gdf,
                     style_function=lambda feature: {
@@ -464,36 +384,29 @@ elif page == "Data Upload":
                         'fillOpacity': 0.3,
                     }
                 ).add_to(m)
-
                 st_folium(m, width=700, height=400)
-
             except Exception as e:
-                st.markdown(f'<div class="error-box">Error loading GeoJSON: {e}</div>', unsafe_allow_html=True)
-                
+                st.markdown(f'<div class="error-box">❌ Error loading GeoJSON: {e}</div>', unsafe_allow_html=True)
+
         # New AOI upload for classification (only show if model is trained)
         if st.session_state.trained_model is not None:
             st.subheader("New AOI for Classification")
             new_aoi_file = st.file_uploader("Upload a new AOI to classify", type=["geojson"], key="new_aoi_upload")
-            
+
             if new_aoi_file is not None:
                 try:
                     new_aoi_gdf = gpd.read_file(io.BytesIO(new_aoi_file.read()))
-
                     # Ensure CRS is WGS84
                     if new_aoi_gdf.crs is None or new_aoi_gdf.crs.to_string() != "EPSG:4326":
                         new_aoi_gdf = new_aoi_gdf.to_crs("EPSG:4326")
-
                     st.session_state.new_aoi_gdf = new_aoi_gdf
-                    st.markdown('<div class="success-box">New AOI loaded successfully!</div>', unsafe_allow_html=True)
-
+                    st.markdown('<div class="success-box">✅ New AOI loaded successfully!</div>', unsafe_allow_html=True)
                     st.write("**New AOI Overview:**")
                     st.write(f"Features: {len(new_aoi_gdf)}")
                     st.write(f"Area: {new_aoi_gdf.geometry.area.sum():.4f} degrees²")
-
                     # Display new AOI on map
                     center = [new_aoi_gdf.geometry.centroid.y.mean(), new_aoi_gdf.geometry.centroid.x.mean()]
                     m = folium.Map(location=center, zoom_start=12, tiles="OpenStreetMap")
-
                     folium.GeoJson(
                         new_aoi_gdf,
                         style_function=lambda feature: {
@@ -503,13 +416,12 @@ elif page == "Data Upload":
                             'fillOpacity': 0.3,
                         }
                     ).add_to(m)
-
                     st_folium(m, width=700, height=400)
-                    
+
                     # Classification parameters for new AOI
                     st.subheader("Classification Parameters")
                     col1, col2 = st.columns(2)
-                    
+
                     with col1:
                         start_date = st.date_input(
                             "Start Date",
@@ -517,7 +429,6 @@ elif page == "Data Upload":
                             help="Start date for image collection",
                             key="new_aoi_start_date"
                         )
-
                     with col2:
                         end_date = st.date_input(
                             "End Date",
@@ -525,7 +436,7 @@ elif page == "Data Upload":
                             help="End date for image collection",
                             key="new_aoi_end_date"
                         )
-                    
+
                     cloud_cover = st.slider(
                         "Maximum Cloud Cover (%)",
                         min_value=0,
@@ -534,45 +445,45 @@ elif page == "Data Upload":
                         help="Filter images by cloud cover percentage",
                         key="new_aoi_cloud_cover"
                     )
-                    
-                    if st.button("Classify New AOI", key="classify_new_aoi_btn"):
+
+                    if st.button("🌍 Classify New AOI", key="classify_new_aoi_btn"):
                         results = classify_new_aoi(
-                            new_aoi_gdf, 
+                            new_aoi_gdf,
                             st.session_state.trained_model,
                             start_date,
                             end_date,
                             cloud_cover
                         )
-                        
+
                         if results is not None:
                             st.session_state.new_classification_results = results
-                            st.success("New AOI classified successfully!")
-                            
+                            st.success("✅ New AOI classified successfully!")
+
                             # Show classification results
                             st.subheader("Classification Results")
                             st.write(f"Total pixels classified: {len(results)}")
-                            
+
                             # Class distribution
                             class_counts = results['predicted_class'].value_counts()
                             st.write("**Class Distribution:**")
                             st.write(class_counts)
-                            
+
                             # Confidence statistics
                             avg_confidence = results['prediction_confidence'].mean()
                             st.write(f"**Average Confidence:** {avg_confidence:.3f}")
-                            
+
                             # Show sample results
                             st.write("**Sample Results:**")
                             st.write(results.head())
-                            
+
                             # Create a simple map visualization
                             if 'longitude' in results.columns and 'latitude' in results.columns:
                                 st.subheader("Spatial Distribution")
-                                
+
                                 # Create a sample for faster rendering
                                 sample_size = min(1000, len(results))
                                 sample_df = results.sample(sample_size, random_state=42)
-                                
+
                                 fig = px.scatter_mapbox(
                                     sample_df,
                                     lat='latitude',
@@ -585,34 +496,29 @@ elif page == "Data Upload":
                                 )
                                 fig.update_layout(mapbox_style="open-street-map")
                                 st.plotly_chart(fig, use_container_width=True)
-
                 except Exception as e:
-                    st.markdown(f'<div class="error-box">Error loading new AOI: {e}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="error-box">❌ Error loading new AOI: {e}</div>', unsafe_allow_html=True)
 
 # --- 2. Satellite Data Download ---
-elif page == "Satellite Data":
-    st.header("Sentinel-2 Data Download")
-
+elif page == "🛰️ Satellite Data":
+    st.header("🛰️ Sentinel-2 Data Download")
     if not EE_AVAILABLE:
         st.error("Google Earth Engine is not available. Please install earthengine-api.")
         st.stop()
 
     # Earth Engine Authentication Section
-    st.subheader("Earth Engine Authentication")
-
+    st.subheader("🔐 Earth Engine Authentication")
     # Check current authentication status
     if st.session_state.ee_authenticated:
-        st.success("Google Earth Engine is authenticated and ready to use!")
+        st.success("✅ Google Earth Engine is authenticated and ready to use!")
     else:
-        st.warning("Google Earth Engine is not authenticated.")
-
+        st.warning("⚠️ Google Earth Engine is not authenticated.")
         # Authentication options
         auth_method = st.radio(
             "Choose authentication method:",
             ["JSON Service Account Key", "Interactive Token", "Manual Terminal"],
             horizontal=True
         )
-
         if auth_method == "JSON Service Account Key":
             st.markdown("""
             <div class="info-box">
@@ -620,7 +526,6 @@ elif page == "Satellite Data":
             <p>You can obtain this from the <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a>.</p>
             </div>
             """, unsafe_allow_html=True)
-
             # Enhanced JSON key upload section
             st.markdown("**Option 1: Upload JSON Key File**")
             json_key_file = st.file_uploader(
@@ -629,7 +534,6 @@ elif page == "Satellite Data":
                 help="Upload your Earth Engine service account JSON key file",
                 key="json_file_uploader"
             )
-
             st.markdown("**Option 2: Paste JSON Key Content**")
             json_key_text = st.text_area(
                 "JSON Key Content",
@@ -638,7 +542,6 @@ elif page == "Satellite Data":
                 help="Paste the entire content of your JSON key file here",
                 key="json_text_area"
             )
-
             # Validate JSON format
             json_valid = True
             if json_key_text.strip():
@@ -646,28 +549,24 @@ elif page == "Satellite Data":
                     json.loads(json_key_text.strip())
                 except json.JSONDecodeError:
                     json_valid = False
-                    st.error("Invalid JSON format. Please check your JSON key content.")
-
-            if st.button("Authenticate with JSON Key"):
+                    st.error("❌ Invalid JSON format. Please check your JSON key content.")
+            if st.button("🔑 Authenticate with JSON Key"):
                 json_content = None
-
                 if json_key_file is not None:
                     try:
                         json_content = json.load(json_key_file)
                     except Exception as e:
-                        st.error(f"Error reading JSON file: {e}")
+                        st.error(f"❌ Error reading JSON file: {e}")
                         st.stop()
-
                 elif json_key_text.strip() and json_valid:
                     try:
                         json_content = json.loads(json_key_text.strip())
                     except Exception as e:
-                        st.error(f"Error parsing JSON: {e}")
+                        st.error(f"❌ Error parsing JSON: {e}")
                         st.stop()
                 else:
                     st.error("Please provide JSON key content either by file upload or text input")
                     st.stop()
-
                 if json_content:
                     # Display JSON preview for confirmation
                     st.markdown("**JSON Key Preview (first few lines):**")
@@ -678,19 +577,16 @@ elif page == "Satellite Data":
                     </div>
                     </div>
                     """, unsafe_allow_html=True)
-
                     if st.checkbox("I confirm this is my valid Earth Engine service account JSON key"):
-                        with st.spinner("Authenticating..."):
+                        with st.spinner("🔄 Authenticating..."):
                             success, message = authenticate_with_json_key(json_content)
-
                         if success:
-                            st.success(f"{message}")
+                            st.success(f"✅ {message}")
                             st.rerun()
                         else:
-                            st.error(f"{message}")
+                            st.error(f"❌ {message}")
                     else:
                         st.warning("Please confirm the JSON key before proceeding.")
-
         elif auth_method == "Interactive Token":
             st.markdown("""
             <div class="info-box">
@@ -698,17 +594,14 @@ elif page == "Satellite Data":
             <p>Note: This method may not work in some deployment environments.</p>
             </div>
             """, unsafe_allow_html=True)
-
-            if st.button("Authenticate with Token"):
-                with st.spinner("Opening authentication window..."):
+            if st.button("🌐 Authenticate with Token"):
+                with st.spinner("🔄 Opening authentication window..."):
                     success, message = authenticate_with_token()
-
                 if success:
-                    st.success(f"{message}")
+                    st.success(f"✅ {message}")
                     st.rerun()
                 else:
-                    st.error(f"{message}")
-
+                    st.error(f"❌ {message}")
         elif auth_method == "Manual Terminal":
             st.markdown("""
             <div class="info-box">
@@ -717,50 +610,44 @@ elif page == "Satellite Data":
             <p>Then restart this application.</p>
             </div>
             """, unsafe_allow_html=True)
-
-            if st.button("Check Authentication"):
+            if st.button("🔄 Check Authentication"):
                 success, message = authenticate_ee()
                 if success:
-                    st.success(f"{message}")
+                    st.success(f"✅ {message}")
                     st.rerun()
                 else:
-                    st.error("Authentication still not working. Please try again.")
+                    st.error("❌ Authentication still not working. Please try again.")
 
     # Only show download options if authenticated
     if not st.session_state.ee_authenticated:
         st.stop()
 
     if st.session_state.gdf is None:
-        st.warning("Please upload an AOI (GeoJSON) first in the Data Upload section")
+        st.warning("⚠️ Please upload an AOI (GeoJSON) first in the Data Upload section")
         st.stop()
 
     st.markdown("---")
-    st.subheader("Download Parameters")
-
+    st.subheader("📡 Download Parameters")
     col1, col2 = st.columns(2)
-
     with col1:
         start_date = st.date_input(
             "Start Date",
             value=date(2023, 1, 1),
             help="Start date for image collection"
         )
-
         cloud_cover = st.slider(
             "Maximum Cloud Cover (%)",
             min_value=0,
             max_value=100,
-            value=30,  # Increased default from 20 to 30
+            value=20,
             help="Filter images by cloud cover percentage"
         )
-
     with col2:
         end_date = st.date_input(
             "End Date",
             value=date(2023, 12, 31),
             help="End date for image collection"
         )
-
         resolution = st.selectbox(
             "Spatial Resolution (m)",
             options=[10, 20, 60],
@@ -768,6 +655,627 @@ elif page == "Satellite Data":
             help="Pixel resolution for download"
         )
 
-    if st.button("Download Sentinel-2 Data"):
+    if st.button("🛰️ Download Sentinel-2 Data"):
         if not EE_AVAILABLE:
-            st.error("Earth Engine not available
+            st.error("Earth Engine not available")
+            st.stop()
+        try:
+            with st.spinner("🔄 Processing satellite data..."):
+                # Convert GeoDataFrame to Earth Engine geometry
+                geom_json = json.loads(st.session_state.gdf.to_json())
+                ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
+                # Create image collection
+                collection = ee.ImageCollection('COPERNICUS/S2_SR') \
+                    .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
+                    .filterBounds(ee_geom) \
+                    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+                # Check if collection is empty
+                size = collection.size()
+                if size.getInfo() == 0:
+                    st.error("No images found for the specified criteria. Try adjusting the date range or increasing the cloud cover threshold.")
+                    st.stop()
+                st.success(f"✅ Found {size.getInfo()} images")
+                # Create median composite
+                image = collection.map(mask_clouds).median().clip(ee_geom)
+                # Add spectral indices
+                image = calculate_ndvi(image)
+                image = calculate_ndwi(image)
+                # Store in session state
+                st.session_state.ee_image = image
+                # Extract features for training
+                features = extract_features_from_image(image, ee_geom)
+                if features:
+                    # Convert to DataFrame
+                    feature_info = features.getInfo()
+                    if feature_info and 'features' in feature_info:
+                        feature_data = []
+                        for feature in feature_info['features']:
+                            props = feature['properties']
+                            # Add geometry info
+                            if 'geometry' in feature and feature['geometry']['type'] == 'Point':
+                                coords = feature['geometry']['coordinates']
+                                props['longitude'] = coords[0]
+                                props['latitude'] = coords[1]
+                            feature_data.append(props)
+                        feature_df = pd.DataFrame(feature_data)
+                        st.session_state.feature_data = feature_df
+                        st.success("✅ Features extracted successfully!")
+                        st.write("**Extracted Features Preview:**")
+                        st.write(feature_df.head())
+                # Display image preview with improved parameters
+                st.subheader("📷 Image Preview")
+                try:
+                    # Get image bounds for visualization
+                    bounds = ee_geom.bounds().getInfo()['coordinates'][0]
+                    # Create visualization parameters with adjusted values
+                    vis_params = {
+                        'bands': ['B4', 'B3', 'B2'],  # RGB
+                        'min': 0.05,  # Increased from 0 to 0.05
+                        'max': 0.3,   # Reduced from 3000 to 0.3 (normalized values)
+                        'gamma': 1.4
+                    }
+                    # Get image URL for display with higher resolution
+                    url = image.select(['B4', 'B3', 'B2']).getThumbURL({
+                        'dimensions': 800,  # Increased from 512
+                        'region': ee_geom,
+                        'format': 'png',
+                        **vis_params
+                    })
+                    st.image(url, caption="Sentinel-2 RGB Composite", use_container_width=True)
+                    # Add debug information
+                    with st.expander("🔍 Debug Information"):
+                        st.write("**Image Statistics:**")
+                        stats = image.reduceRegion(
+                            reducer=ee.Reducer.minMax(),
+                            geometry=ee_geom,
+                            scale=10,
+                            maxPixels=1e9
+                        ).getInfo()
+                        if stats:
+                            st.write(f"Band Min/Max Values:")
+                            for band in ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']:
+                                if band in stats:
+                                    st.write(f"{band}: {stats[band]['min']:.4f} - {stats[band]['max']:.4f}")
+                        else:
+                            st.write("Could not retrieve image statistics")
+                        # Check if image is empty
+                        is_empty = image.reduceRegion(
+                            reducer=ee.Reducer.anyNonZero(),
+                            geometry=ee_geom,
+                            scale=10,
+                            maxPixels=1e9
+                        ).getInfo()
+                        st.write(f"Image contains valid pixels: {bool(is_empty.get('B4', False))}")
+                        if not bool(is_empty.get('B4', False)):
+                            st.warning("""
+                            The image appears to be empty. This could be due to:
+                            1. All pixels being masked out by cloud detection
+                            2. No valid images available for the selected date range
+                            3. The area of interest not being covered by Sentinel-2 data
+                            Try these solutions:
+                            - Increase the cloud cover threshold
+                            - Adjust the date range to include more dates
+                            - Check if your area of interest is valid
+                            """)
+                except Exception as preview_error:
+                    st.error(f"Error generating image preview: {preview_error}")
+                    st.info("""
+                    Tips for fixing black image preview:
+                    1. Try adjusting the date range to get images with less cloud cover
+                    2. Check if your area of interest is valid
+                    3. The image might be completely covered by clouds after masking
+                    4. Try increasing the cloud cover threshold
+                    """)
+        except Exception as e:
+            st.error(f"Error downloading satellite data: {e}")
+
+# --- 3. Visualization ---
+elif page == "📊 Visualization":
+    st.header("📊 Data Visualization")
+    if st.session_state.feature_data is not None:
+        df = st.session_state.feature_data
+        st.subheader("🔍 Feature Analysis")
+        # Basic statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Pixels", len(df))
+        with col2:
+            if 'NDVI' in df.columns:
+                st.metric("Avg NDVI", f"{df['NDVI'].mean():.3f}")
+        with col3:
+            if 'NDWI' in df.columns:
+                st.metric("Avg NDWI", f"{df['NDWI'].mean():.3f}")
+        with col4:
+            if 'B2' in df.columns:
+                st.metric("Avg Blue", f"{df['B2'].mean():.0f}")
+        # Visualizations
+        col1, col2 = st.columns(2)
+        with col1:
+            if 'NDVI' in df.columns:
+                st.subheader("NDVI Distribution")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.hist(df['NDVI'].dropna(), bins=50, alpha=0.7, color='green')
+                ax.set_xlabel('NDVI')
+                ax.set_ylabel('Frequency')
+                ax.set_title('NDVI Distribution')
+                st.pyplot(fig)
+        with col2:
+            if 'NDWI' in df.columns:
+                st.subheader("NDWI Distribution")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.hist(df['NDWI'].dropna(), bins=50, alpha=0.7, color='blue')
+                ax.set_xlabel('NDWI')
+                ax.set_ylabel('Frequency')
+                ax.set_title('NDWI Distribution')
+                st.pyplot(fig)
+        # Scatter plot
+        if 'NDVI' in df.columns and 'NDWI' in df.columns:
+            st.subheader("NDVI vs NDWI Scatter Plot")
+            fig, ax = plt.subplots(figsize=(10, 6))
+            scatter = ax.scatter(df['NDVI'], df['NDWI'], alpha=0.5, c=df.index, cmap='viridis')
+            ax.set_xlabel('NDVI')
+            ax.set_ylabel('NDWI')
+            ax.set_title('NDVI vs NDWI')
+            plt.colorbar(scatter)
+            st.pyplot(fig)
+        # Correlation matrix
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 1:
+            st.subheader("Feature Correlation Matrix")
+            fig, ax = plt.subplots(figsize=(12, 8))
+            correlation_matrix = df[numeric_cols].corr()
+            sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0, ax=ax)
+            st.pyplot(fig)
+    else:
+        st.info("📥 Please download satellite data first to generate visualizations.")
+
+# --- 4. Model Training ---
+elif page == "🤖 Model Training":
+    st.header("🤖 Model Training")
+    if st.session_state.df is None and st.session_state.feature_data is None:
+        st.warning("⚠️ Please upload training data or download satellite data first.")
+        st.stop()
+    # Choose data source
+    data_source = st.radio("Select training data source:",
+                          ["Uploaded CSV", "Extracted Satellite Features"],
+                          horizontal=True)
+    if data_source == "Uploaded CSV" and st.session_state.df is not None:
+        df = st.session_state.df.copy()
+    elif data_source == "Extracted Satellite Features" and st.session_state.feature_data is not None:
+        df = st.session_state.feature_data.copy()
+        # Create synthetic labels based on spectral indices for demonstration
+        if 'NDVI' in df.columns and 'NDWI' in df.columns:
+            def classify_pixel(row):
+                ndvi = row.get('NDVI', 0)
+                ndwi = row.get('NDWI', 0)
+                if ndwi > 0.3:
+                    return 'Water'
+                elif ndvi > 0.6:
+                    return 'Forest'
+                elif ndvi > 0.3:
+                    return 'Vegetation'
+                elif ndvi < 0.1:
+                    return 'Urban'
+                else:
+                    return 'Bare_Soil'
+            df['land_cover'] = df.apply(classify_pixel, axis=1)
+            st.info("🏷️ Synthetic labels created based on spectral indices")
+    else:
+        st.error("No suitable data available for training")
+        st.stop()
+    st.subheader("📋 Training Configuration")
+    col1, col2 = st.columns(2)
+    with col1:
+        # Select target column
+        potential_targets = [col for col in df.columns if df[col].dtype == 'object' or 'class' in col.lower() or 'label' in col.lower()]
+        target_col = st.selectbox("Select target column:", potential_targets)
+        if target_col:
+            st.write(f"**Classes found:** {df[target_col].unique()}")
+            st.write(f"**Class distribution:**")
+            st.write(df[target_col].value_counts())
+    with col2:
+        # Select feature columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        feature_cols = st.multiselect("Select feature columns:", numeric_cols, default=numeric_cols[:5])
+        test_size = st.slider("Test set size (%)", 10, 40, 20) / 100
+        random_state = st.number_input("Random state", value=42, min_value=0)
+    if st.button("🚀 Train Model"):
+        if not feature_cols or not target_col:
+            st.error("Please select feature and target columns")
+            st.stop()
+        try:
+            with st.spinner("🔄 Training model..."):
+                # Prepare data
+                X = df[feature_cols].fillna(0)  # Fill NaN values
+                y = df[target_col]
+                # Encode labels if necessary
+                le = LabelEncoder()
+                y_encoded = le.fit_transform(y)
+                # Split data
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y_encoded, test_size=test_size, random_state=random_state, stratify=y_encoded
+                )
+                # Scale features
+                scaler = StandardScaler()
+                X_train_scaled = scaler.fit_transform(X_train)
+                X_test_scaled = scaler.transform(X_test)
+                # Train Random Forest
+                rf_model = RandomForestClassifier(
+                    n_estimators=100,
+                    random_state=random_state,
+                    max_depth=10,
+                    min_samples_split=5
+                )
+                rf_model.fit(X_train_scaled, y_train)
+                # Make predictions
+                y_pred = rf_model.predict(X_test_scaled)
+                # Calculate accuracy
+                accuracy = accuracy_score(y_test, y_pred)
+                # Store model and preprocessors
+                st.session_state.trained_model = {
+                    'model': rf_model,
+                    'scaler': scaler,
+                    'label_encoder': le,
+                    'feature_cols': feature_cols,
+                    'accuracy': accuracy
+                }
+                st.success(f"✅ Model trained successfully! Accuracy: {accuracy:.3f}")
+                # Display results
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.subheader("📊 Classification Report")
+                    report = classification_report(y_test, y_pred,
+                                                 target_names=le.classes_,
+                                                 output_dict=True)
+                    report_df = pd.DataFrame(report).transpose()
+                    st.write(report_df.round(3))
+                with col2:
+                    st.subheader("🎯 Confusion Matrix")
+                    cm = confusion_matrix(y_test, y_pred)
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    sns.heatmap(cm, annot=True, fmt='d',
+                              xticklabels=le.classes_,
+                              yticklabels=le.classes_,
+                              cmap='Blues', ax=ax)
+                    ax.set_ylabel('True Label')
+                    ax.set_xlabel('Predicted Label')
+                    st.pyplot(fig)
+                # Feature importance
+                st.subheader("📈 Feature Importance")
+                importance_df = pd.DataFrame({
+                    'Feature': feature_cols,
+                    'Importance': rf_model.feature_importances_
+                }).sort_values('Importance', ascending=False)
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sns.barplot(data=importance_df, x='Importance', y='Feature', ax=ax)
+                ax.set_title('Feature Importance')
+                st.pyplot(fig)
+        except Exception as e:
+            st.error(f"Error training model: {e}")
+
+# --- 5. Classification ---
+elif page == "🗺️ Classification":
+    st.header("🗺️ Land Cover Classification")
+    if st.session_state.trained_model is None:
+        st.warning("⚠️ Please train a model first in the Model Training section.")
+        st.stop()
+    if st.session_state.ee_image is None:
+        st.warning("⚠️ Please download satellite data first.")
+        st.stop()
+    st.subheader("🔮 Apply Classification")
+    model_info = st.session_state.trained_model
+    accuracy = model_info['accuracy']
+    st.info(f"🎯 Using trained model with accuracy: {accuracy:.3f}")
+    if st.button("🚀 Classify Land Cover"):
+        try:
+            with st.spinner("🔄 Classifying land cover..."):
+                # Get feature data
+                if st.session_state.feature_data is not None:
+                    df = st.session_state.feature_data.copy()
+                    # Prepare features
+                    feature_cols = model_info['feature_cols']
+                    X = df[feature_cols].fillna(0)
+                    # Scale features
+                    X_scaled = model_info['scaler'].transform(X)
+                    # Make predictions
+                    predictions = model_info['model'].predict(X_scaled)
+                    prediction_probs = model_info['model'].predict_proba(X_scaled)
+                    # Decode labels
+                    predicted_labels = model_info['label_encoder'].inverse_transform(predictions)
+                    # Add predictions to dataframe
+                    df['predicted_class'] = predicted_labels
+                    df['prediction_confidence'] = prediction_probs.max(axis=1)
+                    # Display results
+                    st.success("✅ Classification completed!")
+                    # Class distribution
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("📊 Predicted Class Distribution")
+                        class_counts = pd.Series(predicted_labels).value_counts()
+                        st.write(class_counts)
+                        # Plot distribution
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        class_counts.plot(kind='bar', ax=ax, color='skyblue')
+                        ax.set_title('Predicted Land Cover Distribution')
+                        ax.set_xlabel('Land Cover Class')
+                        ax.set_ylabel('Number of Pixels')
+                        plt.xticks(rotation=45)
+                        st.pyplot(fig)
+                    with col2:
+                        st.subheader("🎯 Prediction Confidence")
+                        avg_confidence = df['prediction_confidence'].mean()
+                        st.metric("Average Confidence", f"{avg_confidence:.3f}")
+                        # Confidence distribution
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        ax.hist(df['prediction_confidence'], bins=30, alpha=0.7, color='orange')
+                        ax.set_xlabel('Prediction Confidence')
+                        ax.set_ylabel('Frequency')
+                        ax.set_title('Prediction Confidence Distribution')
+                        st.pyplot(fig)
+                    # Store classified data
+                    st.session_state.classified_data = df
+                    # Show sample results
+                    st.subheader("🔍 Sample Classification Results")
+                    display_cols = ['predicted_class', 'prediction_confidence'] + feature_cols[:3]
+                    st.write(df[display_cols].head(10))
+        except Exception as e:
+            st.error(f"Error during classification: {e}")
+
+# --- 6. Results ---
+elif page == "📋 Results":
+    st.header("📋 Results and Analysis")
+    if 'classified_data' not in st.session_state or st.session_state.classified_data is None:
+        st.warning("⚠️ Please complete the classification process first.")
+        st.stop()
+    df = st.session_state.classified_data
+    # Summary statistics
+    st.subheader("📊 Classification Summary")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Pixels Classified", len(df))
+    with col2:
+        st.metric("Number of Classes", df['predicted_class'].nunique())
+    with col3:
+        avg_confidence = df['prediction_confidence'].mean()
+        st.metric("Average Confidence", f"{avg_confidence:.3f}")
+    with col4:
+        high_confidence = (df['prediction_confidence'] > 0.8).sum()
+        st.metric("High Confidence Predictions", f"{high_confidence} ({100*high_confidence/len(df):.1f}%)")
+    # Detailed analysis
+    st.subheader("🔍 Detailed Analysis")
+    tabs = st.tabs(["Class Statistics", "Spatial Distribution", "Confidence Analysis", "Feature Analysis"])
+    with tabs[0]:
+        # Class statistics
+        class_stats = df.groupby('predicted_class').agg({
+            'prediction_confidence': ['count', 'mean', 'std'],
+            'NDVI': ['mean', 'std'] if 'NDVI' in df.columns else lambda x: None,
+            'NDWI': ['mean', 'std'] if 'NDWI' in df.columns else lambda x: None
+        }).round(3)
+        st.write(class_stats)
+    with tabs[1]:
+        if 'longitude' in df.columns and 'latitude' in df.columns:
+            st.subheader("🗺️ Spatial Distribution Map")
+            try:
+                fig = px.scatter_mapbox(
+                    df,
+                    lat='latitude',
+                    lon='longitude',
+                    color='predicted_class',
+                    zoom=10,
+                    height=600,
+                    title="Predicted Land Cover Classes"
+                )
+                fig.update_layout(mapbox_style="open-street-map")
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error creating spatial distribution map: {e}")
+                st.write("Make sure you have a valid Mapbox token or use another map style.")
+                # Fallback to a simpler plot
+                fig, ax = plt.subplots(figsize=(10, 6))
+                for land_class in df['predicted_class'].unique():
+                    class_df = df[df['predicted_class'] == land_class]
+                    ax.scatter(class_df['longitude'], class_df['latitude'],
+                              label=land_class, alpha=0.5, s=10)
+                ax.set_title('Spatial Distribution of Predicted Classes')
+                ax.set_xlabel('Longitude')
+                ax.set_ylabel('Latitude')
+                ax.legend()
+                st.pyplot(fig)
+    with tabs[2]:
+        st.subheader("📊 Confidence Analysis")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.boxplot(data=df, x='predicted_class', y='prediction_confidence', ax=ax)
+        ax.set_title('Prediction Confidence by Class')
+        ax.set_xlabel('Land Cover Class')
+        ax.set_ylabel('Prediction Confidence')
+        plt.xticks(rotation=45)
+        st.pyplot(fig)
+    with tabs[3]:
+        st.subheader("🔍 Feature Analysis by Class")
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols[:5]:  # Show first 5 numeric features
+            if col not in ['longitude', 'latitude', 'prediction_confidence']:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sns.boxplot(data=df, x='predicted_class', y=col, ax=ax)
+                ax.set_title(f'Distribution of {col} by Class')
+                ax.set_xlabel('Land Cover Class')
+                ax.set_ylabel(col)
+                plt.xticks(rotation=45)
+                st.pyplot(fig)
+
+# --- 7. Downloads ---
+elif page == "⬇️ Downloads":
+    st.header("⬇️ Download Results")
+    st.markdown("""
+    <div class="info-box">
+    <p>Download your processed data and results in various formats.</p>
+    <p>Select the data you want to download from the options below.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    # Check what data is available for download
+    available_data = []
+    # Safely check each data type
+    if 'df' in st.session_state and st.session_state.df is not None:
+        available_data.append("Training Data (CSV)")
+    if 'feature_data' in st.session_state and st.session_state.feature_data is not None:
+        available_data.append("Extracted Features (CSV)")
+    if 'classified_data' in st.session_state and st.session_state.classified_data is not None:
+        available_data.append("Classification Results (CSV/GeoJSON)")
+    if 'gdf' in st.session_state and st.session_state.gdf is not None:
+        available_data.append("Area of Interest (GeoJSON)")
+    if 'trained_model' in st.session_state and st.session_state.trained_model is not None:
+        available_data.append("Trained Model (Joblib)")
+    if 'new_classification_results' in st.session_state and st.session_state.new_classification_results is not None:
+        available_data.append("New AOI Classification Results (CSV/GeoJSON)")
+    if not available_data:
+        st.warning("⚠️ No data available for download. Please process some data first.")
+        st.stop()
+    # Create download options
+    st.subheader("📥 Available Downloads")
+    download_option = st.selectbox(
+        "Select data to download:",
+        available_data
+    )
+    try:
+        if download_option == "Training Data (CSV)" and 'df' in st.session_state and st.session_state.df is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your original training data as a CSV file.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            csv = st.session_state.df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Training Data CSV",
+                data=csv,
+                file_name="training_data.csv",
+                mime="text/csv",
+            )
+        elif download_option == "Extracted Features (CSV)" and 'feature_data' in st.session_state and st.session_state.feature_data is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download the features extracted from satellite imagery as a CSV file.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            csv = st.session_state.feature_data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Extracted Features CSV",
+                data=csv,
+                file_name="extracted_features.csv",
+                mime="text/csv",
+            )
+        elif download_option == "Classification Results (CSV/GeoJSON)" and 'classified_data' in st.session_state and st.session_state.classified_data is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your classification results in CSV or GeoJSON format.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            # CSV download
+            csv = st.session_state.classified_data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Classification Results CSV",
+                data=csv,
+                file_name="classification_results.csv",
+                mime="text/csv",
+            )
+            # GeoJSON download if coordinates exist
+            if 'longitude' in st.session_state.classified_data.columns and 'latitude' in st.session_state.classified_data.columns:
+                try:
+                    # Convert to GeoDataFrame
+                    gdf = gpd.GeoDataFrame(
+                        st.session_state.classified_data,
+                        geometry=gpd.points_from_xy(
+                            st.session_state.classified_data.longitude,
+                            st.session_state.classified_data.latitude
+                        ),
+                        crs="EPSG:4326"
+                    )
+                    # Convert to GeoJSON
+                    geojson_str = gdf.to_json()
+                    geojson_bytes = geojson_str.encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Classification Results GeoJSON",
+                        data=geojson_bytes,
+                        file_name="classification_results.geojson",
+                        mime="application/json",
+                    )
+                except Exception as e:
+                    st.error(f"Error creating GeoJSON: {e}")
+        elif download_option == "Area of Interest (GeoJSON)" and 'gdf' in st.session_state and st.session_state.gdf is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your original area of interest as a GeoJSON file.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            try:
+                geojson_str = st.session_state.gdf.to_json()
+                geojson_bytes = geojson_str.encode('utf-8')
+                st.download_button(
+                    label="📥 Download AOI GeoJSON",
+                    data=geojson_bytes,
+                    file_name="area_of_interest.geojson",
+                    mime="application/json",
+                )
+            except Exception as e:
+                st.error(f"Error creating GeoJSON: {e}")
+        elif download_option == "Trained Model (Joblib)" and 'trained_model' in st.session_state and st.session_state.trained_model is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your trained machine learning model for later use.</p>
+            <p>This file can be loaded back into the application or used in other Python scripts.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            try:
+                import joblib
+                import io
+                # Create a buffer to hold the model
+                buffer = io.BytesIO()
+                joblib.dump(st.session_state.trained_model, buffer)
+                buffer.seek(0)
+                st.download_button(
+                    label="📥 Download Trained Model",
+                    data=buffer,
+                    file_name="trained_model.joblib",
+                    mime="application/octet-stream",
+                )
+            except Exception as e:
+                st.error(f"Error saving model: {e}")
+
+        elif download_option == "New AOI Classification Results (CSV/GeoJSON)" and 'new_classification_results' in st.session_state and st.session_state.new_classification_results is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Download your new AOI classification results in CSV or GeoJSON format.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            # CSV download
+            csv = st.session_state.new_classification_results.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download New AOI Classification Results CSV",
+                data=csv,
+                file_name="new_aoi_classification_results.csv",
+                mime="text/csv",
+            )
+            # GeoJSON download if coordinates exist
+            if 'longitude' in st.session_state.new_classification_results.columns and 'latitude' in st.session_state.new_classification_results.columns:
+                try:
+                    # Convert to GeoDataFrame
+                    gdf = gpd.GeoDataFrame(
+                        st.session_state.new_classification_results,
+                        geometry=gpd.points_from_xy(
+                            st.session_state.new_classification_results.longitude,
+                            st.session_state.new_classification_results.latitude
+                        ),
+                        crs="EPSG:4326"
+                    )
+                    # Convert to GeoJSON
+                    geojson_str = gdf.to_json()
+                    geojson_bytes = geojson_str.encode('utf-8')
+                    st.download_button(
+                        label="📥 Download New AOI Classification Results GeoJSON",
+                        data=geojson_bytes,
+                        file_name="new_aoi_classification_results.geojson",
+                        mime="application/json",
+                    )
+                except Exception as e:
+                    st.error(f"Error creating GeoJSON: {e}")
+    except Exception as e:
+        st.error(f"An error occurred while preparing downloads: {e}")
