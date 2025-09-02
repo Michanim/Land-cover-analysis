@@ -61,6 +61,126 @@ if 'new_aoi_gdf' not in st.session_state:
 if 'new_classification_results' not in st.session_state:
     st.session_state.new_classification_results = None
 
+# --- Netflix-like Custom Styling ---
+st.markdown(
+    """
+    <style>
+    /* Dark theme */
+    .main {
+        background-color: #141414;
+        color: #ffffff;
+    }
+    /* Sidebar */
+    .sidebar .sidebar-content {
+        background-color: #141414;
+        color: #ffffff;
+    }
+    /* Buttons */
+    .stButton>button {
+        background-color: #e50914;
+        color: white;
+        border-radius: 4px;
+        border: none;
+        padding: 12px 24px;
+        font-weight: bold;
+        font-size: 16px;
+        transition: all 0.3s;
+    }
+    .stButton>button:hover {
+        background-color: #b2070f;
+        transform: scale(1.02);
+    }
+    /* File uploader */
+    .stFileUploader {
+        border: 2px dashed #555;
+        border-radius: 8px;
+        padding: 20px;
+        background-color: #333;
+    }
+    /* Success/Error/Info boxes */
+    .success-box {
+        padding: 15px;
+        background: #2d5a2d;
+        border-radius: 8px;
+        color: #ffffff;
+        margin: 10px 0;
+        border-left: 5px solid #2ecc71;
+    }
+    .error-box {
+        padding: 15px;
+        background: #5a2d2d;
+        border-radius: 8px;
+        color: #ffffff;
+        margin: 10px 0;
+        border-left: 5px solid #e74c3c;
+    }
+    .info-box {
+        padding: 15px;
+        background: #2d4a5a;
+        border-radius: 8px;
+        color: #ffffff;
+        margin: 10px 0;
+        border-left: 5px solid #3498db;
+    }
+    /* Metric cards */
+    .metric-card {
+        background: #1e1e1e;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        margin-bottom: 20px;
+        border-left: 4px solid #e50914;
+    }
+    /* JSON key box */
+    .json-key-box {
+        background: #2a2a2a;
+        border: 1px dashed #555;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 15px 0;
+    }
+    /* Code block */
+    .code-block {
+        background: #1e1e1e;
+        border: 1px solid #444;
+        border-radius: 5px;
+        padding: 10px;
+        font-family: monospace;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    /* Navigation */
+    .stRadio>div {
+        background-color: #333;
+        border-radius: 8px;
+        padding: 10px;
+    }
+    /* Folium map container */
+    .folium-map {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    /* Plotly charts */
+    .plotly-graph-div {
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {
+        color: #ffffff;
+    }
+    /* DataFrames */
+    .stDataFrame {
+        background-color: #2a2a2a;
+        color: #ffffff;
+        border-radius: 8px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- Earth Engine Authentication ---
 def authenticate_ee():
     """Authenticate Google Earth Engine with different methods"""
@@ -223,81 +343,25 @@ def classify_new_aoi(new_aoi_gdf, trained_model, start_date, end_date, cloud_cov
 # --- Streamlit Page Config ---
 st.set_page_config(page_title="Land Cover Analysis", layout="wide")
 
-# --- Custom Styling ---
-st.markdown(
-    """
-    <style>
-    .main {background-color: #f8f9fa;}
-    .stButton>button {
-        background-color: #4CAF50;
-        color: white;
-        border-radius: 8px;
-        border: none;
-        padding: 10px 20px;
-        font-weight: bold;
-    }
-    .stFileUploader {border: 2px dashed #6c757d; border-radius: 8px; padding: 20px;}
-    .success-box {
-        padding: 15px;
-        background: #d4edda;
-        border-radius: 8px;
-        color: #155724;
-        margin: 10px 0;
-        border-left: 5px solid #28a745;
-    }
-    .error-box {
-        padding: 15px;
-        background: #f8d7da;
-        border-radius: 8px;
-        color: #721c24;
-        margin: 10px 0;
-        border-left: 5px solid #dc3545;
-    }
-    .info-box {
-        padding: 15px;
-        background: #d1ecf1;
-        border-radius: 8px;
-        color: #0c5460;
-        margin: 10px 0;
-        border-left: 5px solid #0c5460;
-    }
-    .metric-card {
-        background: black;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-    }
-    .json-key-box {
-        background: #f8f9fa;
-        border: 1px dashed #dee2e6;
-        border-radius: 8px;
-        padding: 15px;
-        margin: 15px 0;
-    }
-    .code-block {
-        background: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 5px;
-        padding: 10px;
-        font-family: monospace;
-        white-space: pre-wrap;
-        word-break: break-all;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
+# --- Netflix-like Sidebar Navigation ---
+st.sidebar.title("🌍 Land Cover Analysis")
+page = st.sidebar.radio(
+    "Navigate",
+    [
+        "🏠 Home",
+        "📂 Data Upload",
+        "🛰️ Satellite Data",
+        "📊 Visualization",
+        "🤖 Model Training",
+        "🗺️ Classification",
+        "📋 Results",
+        "⬇️ Downloads"
+    ]
 )
 
 # --- Title ---
 st.title("🌍 Advanced Land Cover Analysis Dashboard")
 st.markdown("*Powered by Google Earth Engine and Machine Learning*")
-
-# --- Navigation ---
-page = st.radio("Navigate", [
-    "🏠 Home", "📂 Data Upload", "🛰️ Satellite Data", "📊 Visualization",
-    "🤖 Model Training", "🗺️ Classification", "📋 Results", "⬇️ Downloads"
-], horizontal=True)
 
 # --- Home Page ---
 if page == "🏠 Home":
