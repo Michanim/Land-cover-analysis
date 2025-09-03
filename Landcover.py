@@ -276,6 +276,10 @@ def fetch_sentinel_images(geometry, start_date, end_date, cloud_cover=20):
 
         st.success(f"✅ Found {size.getInfo()} images")
 
+        # Select only the common bands to avoid incompatibility
+        common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
+        collection = collection.map(lambda image: image.select(common_bands))
+
         # Create a list of images with dates
         image_list = collection.toList(collection.size())
         images_info = image_list.getInfo()
@@ -331,6 +335,11 @@ def classify_new_aoi(new_aoi_gdf, trained_model, start_date, end_date, cloud_cov
                 .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
                 .filterBounds(ee_geom) \
                 .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+
+            # Select only the common bands to avoid incompatibility
+            common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
+            collection = collection.map(lambda image: image.select(common_bands))
+
             # Check if collection is empty
             size = collection.size()
             if size.getInfo() == 0:
@@ -777,6 +786,11 @@ elif page == "🛰️ Satellite Data":
                     .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
                     .filterBounds(ee_geom) \
                     .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+
+                # Select only the common bands to avoid incompatibility
+                common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
+                collection = collection.map(lambda image: image.select(common_bands))
+
                 # Check if collection is empty
                 size = collection.size()
                 if size.getInfo() == 0:
