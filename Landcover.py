@@ -251,6 +251,50 @@ def mask_clouds(image):
         return image.updateMask(cloud_mask).divide(10000)
     return None
 
+def fetch_sentinel_images(geometry, start_date, end_date, cloud_cover=20):
+    """Fetch Sentinel-2 images for a given geometry and date range."""
+    if not EE_AVAILABLE:
+        st.error("Earth Engine not available")
+        return None
+
+    try:
+        # Convert GeoDataFrame to Earth Engine geometry
+        geom_json = json.loads(geometry.to_json())
+        ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
+
+        # Create image collection
+        collection = ee.ImageCollection('COPERNICUS/S2_SR') \
+            .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
+            .filterBounds(ee_geom) \
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+
+        # Check if collection is empty
+        size = collection.size()
+        if size.getInfo() == 0:
+            st.error("No images found for the specified criteria. Try adjusting the date range or increasing the cloud cover threshold.")
+            return None
+
+        st.success(f"✅ Found {size.getInfo()} images")
+
+        # Create a list of images with dates
+        image_list = collection.toList(collection.size())
+        images_info = image_list.getInfo()
+
+        images = []
+        for img_info in images_info:
+            img = ee.Image(img_info['id'])
+            img = mask_clouds(img)
+            img = calculate_ndvi(img)
+            img = calculate_ndwi(img)
+            date = img.get('system:time_start').getInfo()
+            images.append({'image': img, 'date': datetime.fromtimestamp(date / 1000).strftime('%Y-%m-%d')})
+
+        return images
+
+    except Exception as e:
+        st.error(f"Error fetching images: {e}")
+        return None
+
 def extract_features_from_image(image, geometry):
     """Extract spectral features from image within geometry"""
     if not EE_AVAILABLE:
@@ -836,9 +880,11 @@ elif page == "🛰️ Satellite Data":
 # --- 3. Visualization ---
 elif page == "📊 Visualization":
     st.header("📊 Data Visualization")
+
     if st.session_state.feature_data is not None:
         df = st.session_state.feature_data
         st.subheader("🔍 Feature Analysis")
+
         # Basic statistics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -852,7 +898,120 @@ elif page == "📊 Visualization":
         with col4:
             if 'B2' in df.columns:
                 st.metric("Avg Blue", f"{df['B2'].mean():.0f}")
-        # Visualizations
+
+        # --- Side-by-Side Image Comparison ---
+        st.subheader("📅 Side-by-Side Image Comparison")
+
+        if st.session_state.gdf is not None:
+            st.markdown("""
+            <div class="info-box">
+            <p>Compare satellite images from different years to visualize changes over time.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date_1 = st.date_input("Start Date (First Image)", value=date(2020, 1, 1))
+                end_date_1 = st.date_input("End Date (First Image)", value=date(2020, 12, 31))
+            with col2:
+                start_date_2 = st.date_input("Start Date (Second Image)", value=date(2023, 1, 1))
+                end_date_2 = st.date_input("End Date (Second Image)", value=date(2023, 12, 31))
+
+            if st.button("🔍 Compare Images"):
+                with st.spinner("🔄 Fetching images..."):
+                    images_1 = fetch_sentinel_images(st.session_state.gdf, start_date_1, end_date_1)
+                    images_2 = fetch_sentinel_images(st.session_state.gdf, start_date_2, end_date_2)
+
+                    if images_1 and images_2:
+                        # Display images side by side
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            st.subheader(f"Image from {images_1[0]['date']}")
+                            img_1 = images_1[0]['image']
+                            vis_params = {'bands': ['B4', 'B3', 'B2'], 'min': 0.05, 'max': 0.3, 'gamma': 1.4}
+                            url_1 = img_1.getThumbURL({
+                                'dimensions': 600,
+                                'region': st.session_state.gdf.to_crs(epsg=4326).geometry.unary_union.__geo_interface__,
+                                'format': 'png',
+                                **vis_params
+                            })
+                            st.image(url_1, caption=f"Sentinel-2 Image ({images_1[0]['date']})", use_column_width=True)
+
+                        with col2:
+                            st.subheader(f"Image from {images_2[0]['date']}")
+                            img_2 = images_2[0]['image']
+                            url_2 = img_2.getThumbURL({
+                                'dimensions': 600,
+                                'region': st.session_state.gdf.to_crs(epsg=4326).geometry.unary_union.__geo_interface__,
+                                'format': 'png',
+                                **vis_params
+                            })
+                            st.image(url_2, caption=f"Sentinel-2 Image ({images_2[0]['date']})", use_column_width=True)
+
+                        # --- Calculate and Display NDVI/NDWI Differences ---
+                        st.subheader("📊 Changes Over Time")
+
+                        # Calculate NDVI difference
+                        ndvi_diff = img_1.select('NDVI').subtract(img_2.select('NDVI')).rename('NDVI_Diff')
+                        ndvi_diff_url = ndvi_diff.getThumbURL({
+                            'dimensions': 600,
+                            'region': st.session_state.gdf.to_crs(epsg=4326).geometry.unary_union.__geo_interface__,
+                            'format': 'png',
+                            'palette': ['blue', 'white', 'green'],
+                            'min': -0.5,
+                            'max': 0.5
+                        })
+                        st.image(ndvi_diff_url, caption="NDVI Difference (First Image - Second Image)", use_column_width=True)
+
+                        # Calculate NDWI difference
+                        ndwi_diff = img_1.select('NDWI').subtract(img_2.select('NDWI')).rename('NDWI_Diff')
+                        ndwi_diff_url = ndwi_diff.getThumbURL({
+                            'dimensions': 600,
+                            'region': st.session_state.gdf.to_crs(epsg=4326).geometry.unary_union.__geo_interface__,
+                            'format': 'png',
+                            'palette': ['blue', 'white', 'red'],
+                            'min': -0.5,
+                            'max': 0.5
+                        })
+                        st.image(ndwi_diff_url, caption="NDWI Difference (First Image - Second Image)", use_column_width=True)
+
+        # --- Accuracy Metrics ---
+        if 'classified_data' in st.session_state and st.session_state.classified_data is not None:
+            st.subheader("🎯 Accuracy Metrics")
+
+            df_classified = st.session_state.classified_data
+            st.markdown("""
+            <div class="info-box">
+            <p>Accuracy metrics for the land cover classification.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Overall accuracy
+            if 'trained_model' in st.session_state and st.session_state.trained_model is not None:
+                accuracy = st.session_state.trained_model['accuracy']
+                st.metric("Model Accuracy", f"{accuracy:.2%}")
+
+            # Confidence distribution
+            st.subheader("Prediction Confidence Distribution")
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.hist(df_classified['prediction_confidence'], bins=30, alpha=0.7, color='#e50914')
+            ax.set_xlabel('Prediction Confidence')
+            ax.set_ylabel('Frequency')
+            ax.set_title('Prediction Confidence Distribution')
+            st.pyplot(fig)
+
+            # Confidence by class
+            st.subheader("Confidence by Land Cover Class")
+            fig, ax = plt.subplots(figsize=(10, 6))
+            sns.boxplot(data=df_classified, x='predicted_class', y='prediction_confidence', ax=ax, palette="Set2")
+            ax.set_title('Prediction Confidence by Class')
+            ax.set_xlabel('Land Cover Class')
+            ax.set_ylabel('Prediction Confidence')
+            plt.xticks(rotation=45)
+            st.pyplot(fig)
+
+        # --- Visualizations ---
         col1, col2 = st.columns(2)
         with col1:
             if 'NDVI' in df.columns:
@@ -872,6 +1031,7 @@ elif page == "📊 Visualization":
                 ax.set_ylabel('Frequency')
                 ax.set_title('NDWI Distribution')
                 st.pyplot(fig)
+
         # Scatter plot
         if 'NDVI' in df.columns and 'NDWI' in df.columns:
             st.subheader("NDVI vs NDWI Scatter Plot")
@@ -882,6 +1042,7 @@ elif page == "📊 Visualization":
             ax.set_title('NDVI vs NDWI')
             plt.colorbar(scatter)
             st.pyplot(fig)
+
         # Correlation matrix
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) > 1:
@@ -890,6 +1051,7 @@ elif page == "📊 Visualization":
             correlation_matrix = df[numeric_cols].corr()
             sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0, ax=ax)
             st.pyplot(fig)
+
     else:
         st.info("📥 Please download satellite data first to generate visualizations.")
 
