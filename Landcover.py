@@ -61,35 +61,38 @@ if 'new_classification_results' not in st.session_state:
 if 'current_step' not in st.session_state:
     st.session_state.current_step = 0
 
-# --- Modern Professional Styling ---
+    # --- Dark Mode Professional Styling ---
 st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
-    /* Global Styling */
+    /* Global Dark Mode Styling */
     .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #0a0e27 0%, #1a1d3a 50%, #2d1b69 100%);
         min-height: 100vh;
         font-family: 'Inter', sans-serif;
+        color: #ffffff;
     }
     
     .block-container {
         padding: 2rem 1rem;
         max-width: 1200px;
-        background: rgba(255, 255, 255, 0.95);
+        background: rgba(30, 41, 59, 0.9);
         border-radius: 20px;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(20px);
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
         margin-top: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
-    /* Sidebar Styling */
+    /* Sidebar Dark Styling */
     .sidebar .sidebar-content {
-        background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
+        background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
         border-radius: 15px;
         padding: 1rem;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     /* Navigation Steps */
@@ -101,24 +104,27 @@ st.markdown(
         border-radius: 12px;
         transition: all 0.3s ease;
         cursor: pointer;
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
         color: #ffffff;
         text-decoration: none;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     .nav-step:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.1);
         transform: translateX(5px);
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        border-color: rgba(102, 126, 234, 0.5);
     }
     
     .nav-step.active {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        border-color: rgba(102, 126, 234, 0.8);
     }
     
     .nav-step-number {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.15);
         border-radius: 50%;
         width: 30px;
         height: 30px;
@@ -128,6 +134,7 @@ st.markdown(
         margin-right: 15px;
         font-weight: 600;
         font-size: 14px;
+        color: #ffffff;
     }
     
     /* Navigation Arrows */
@@ -156,13 +163,14 @@ st.markdown(
     
     .nav-arrow:hover {
         transform: translateY(-3px);
-        box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+        box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5);
     }
     
     .nav-arrow.disabled {
-        background: #bdc3c7;
+        background: #4a5568;
         cursor: not-allowed;
         box-shadow: none;
+        color: #a0a0a0;
     }
     
     .nav-arrow.disabled:hover {
@@ -171,7 +179,7 @@ st.markdown(
     
     /* Progress Bar */
     .progress-container {
-        background: #ecf0f1;
+        background: rgba(255, 255, 255, 0.1);
         height: 8px;
         border-radius: 10px;
         margin: 2rem 0;
@@ -185,21 +193,23 @@ st.markdown(
         transition: width 0.5s ease;
     }
     
-    /* Cards and Containers */
+    /* Cards and Containers - Dark Mode */
     .feature-card {
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(51, 65, 85, 0.8) 100%);
         border-radius: 20px;
         padding: 2rem;
         margin: 1rem 0;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         transition: transform 0.3s ease, box-shadow 0.3s ease;
+        color: #ffffff;
     }
     
     .feature-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+        border-color: rgba(102, 126, 234, 0.3);
     }
     
     .metric-card {
@@ -215,21 +225,24 @@ st.markdown(
     
     .metric-card:hover {
         transform: scale(1.05);
+        box-shadow: 0 25px 50px rgba(102, 126, 234, 0.4);
     }
     
     .metric-number {
         font-size: 2.5rem;
         font-weight: 700;
         margin: 0;
+        color: #ffffff;
     }
     
     .metric-label {
         font-size: 1rem;
         opacity: 0.9;
         margin-top: 0.5rem;
+        color: #ffffff;
     }
     
-    /* Buttons */
+    /* Buttons - Dark Mode */
     .stButton > button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -244,28 +257,29 @@ st.markdown(
     
     .stButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+        box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5);
     }
     
-    /* File Uploader */
+    /* File Uploader - Dark Mode */
     .stFileUploader {
         border: 2px dashed #667eea;
         border-radius: 20px;
         padding: 2rem;
-        background: rgba(102, 126, 234, 0.05);
+        background: rgba(30, 41, 59, 0.5);
         text-align: center;
         transition: all 0.3s ease;
+        color: #ffffff;
     }
     
     .stFileUploader:hover {
         border-color: #764ba2;
-        background: rgba(118, 75, 162, 0.1);
+        background: rgba(51, 65, 85, 0.7);
     }
     
-    /* Headers */
+    /* Headers - Dark Mode */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'Inter', sans-serif;
-        color: #2c3e50;
+        color: #ffffff;
         font-weight: 700;
     }
     
@@ -280,49 +294,54 @@ st.markdown(
     
     .subtitle {
         font-size: 1.2rem;
-        color: #7f8c8d;
+        color: #cbd5e1;
         margin-bottom: 3rem;
         text-align: center;
     }
     
-    /* Status Messages */
+    /* Text Elements - Dark Mode */
+    p, span, div, label {
+        color: #ffffff;
+    }
+    
+    /* Status Messages - Dark Mode */
     .success-message {
-        background: linear-gradient(135deg, #00b894 0%, #00a085 100%);
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         color: white;
         padding: 1rem 1.5rem;
         border-radius: 15px;
         margin: 1rem 0;
-        box-shadow: 0 10px 25px rgba(0, 184, 148, 0.3);
+        box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
     }
     
     .error-message {
-        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         color: white;
         padding: 1rem 1.5rem;
         border-radius: 15px;
         margin: 1rem 0;
-        box-shadow: 0 10px 25px rgba(231, 76, 60, 0.3);
+        box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
     }
     
     .warning-message {
-        background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         color: white;
         padding: 1rem 1.5rem;
         border-radius: 15px;
         margin: 1rem 0;
-        box-shadow: 0 10px 25px rgba(243, 156, 18, 0.3);
+        box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
     }
     
     .info-message {
-        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
         color: white;
         padding: 1rem 1.5rem;
         border-radius: 15px;
         margin: 1rem 0;
-        box-shadow: 0 10px 25px rgba(52, 152, 219, 0.3);
+        box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
     }
     
-    /* Step Header */
+    /* Step Header - Dark Mode */
     .step-header {
         text-align: center;
         margin-bottom: 3rem;
@@ -331,15 +350,82 @@ st.markdown(
     .step-title {
         font-size: 2.5rem;
         font-weight: 700;
-        color: #2c3e50;
+        color: #ffffff;
         margin-bottom: 1rem;
     }
     
     .step-description {
         font-size: 1.1rem;
-        color: #7f8c8d;
+        color: #cbd5e1;
         max-width: 600px;
         margin: 0 auto;
+    }
+    
+    /* Streamlit Elements - Dark Mode */
+    .stSelectbox > div > div > div {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stTextInput > div > div > input {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stTextArea > div > div > textarea {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stDateInput > div > div > input {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stSlider > div > div > div {
+        color: #ffffff;
+    }
+    
+    .stRadio > div {
+        background-color: rgba(30, 41, 59, 0.5);
+        color: #ffffff;
+        border-radius: 10px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stMultiSelect > div > div {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    /* DataFrames - Dark Mode */
+    .stDataFrame {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border-radius: 10px;
+    }
+    
+    /* Expander - Dark Mode */
+    .streamlit-expanderHeader {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: rgba(30, 41, 59, 0.7);
+        color: #ffffff;
+    }
+    
+    /* Tabs - Dark Mode */
+    .stTabs > div > div > div > div {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
     }
     
     /* Responsive Design */
