@@ -428,19 +428,278 @@ st.markdown(
         color: #ffffff;
     }
     
-    /* Responsive Design */
-    @media (max-width: 768px) {
+    /* Desktop Optimization (1200px+) */
+    @media (min-width: 1200px) {
         .block-container {
-            margin: 1rem;
-            padding: 1rem;
+            max-width: 1400px;
+            padding: 3rem 2rem;
         }
         
-        h1 {
-            font-size: 2rem;
+        .feature-card {
+            padding: 3rem;
         }
         
         .nav-arrows {
+            padding: 0 3rem;
+        }
+        
+        h1 {
+            font-size: 3.5rem;
+        }
+        
+        .metric-card {
+            padding: 2.5rem;
+        }
+        
+        .metric-number {
+            font-size: 3rem;
+        }
+    }
+    
+    /* Laptop/Tablet Landscape (768px - 1199px) */
+    @media (min-width: 768px) and (max-width: 1199px) {
+        .block-container {
+            max-width: 100%;
+            margin: 1.5rem;
+            padding: 2rem 1.5rem;
+        }
+        
+        .feature-card {
+            padding: 2rem;
+        }
+        
+        .nav-arrows {
+            padding: 0 2rem;
+        }
+        
+        h1 {
+            font-size: 2.8rem;
+        }
+        
+        .metric-number {
+            font-size: 2.2rem;
+        }
+        
+        .metric-card {
+            padding: 1.8rem;
+        }
+        
+        /* Adjust sidebar for tablets */
+        .sidebar .sidebar-content {
+            padding: 1.5rem;
+        }
+    }
+    
+    /* Mobile Portrait and Small Tablets (max-width: 767px) */
+    @media (max-width: 767px) {
+        .main {
+            padding: 0;
+        }
+        
+        .block-container {
+            margin: 0.5rem;
+            padding: 1.5rem 1rem;
+            border-radius: 15px;
+            max-width: calc(100vw - 1rem);
+        }
+        
+        /* Mobile Header */
+        h1 {
+            font-size: 2rem;
+            line-height: 1.2;
+        }
+        
+        .subtitle {
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            padding: 0 0.5rem;
+        }
+        
+        .step-header {
+            margin-bottom: 2rem;
+        }
+        
+        .step-title {
+            font-size: 1.8rem;
+            line-height: 1.3;
+        }
+        
+        .step-description {
+            font-size: 1rem;
             padding: 0 1rem;
+        }
+        
+        /* Mobile Cards */
+        .feature-card {
+            padding: 1.5rem 1rem;
+            margin: 0.8rem 0;
+            border-radius: 15px;
+        }
+        
+        .metric-card {
+            padding: 1.5rem 1rem;
+            margin: 0.8rem 0;
+            border-radius: 15px;
+        }
+        
+        .metric-number {
+            font-size: 2rem;
+        }
+        
+        .metric-label {
+            font-size: 0.9rem;
+        }
+        
+        /* Mobile Navigation */
+        .nav-arrows {
+            flex-direction: column;
+            gap: 1rem;
+            padding: 0 1rem;
+            margin: 2rem 0 1.5rem 0;
+        }
+        
+        .nav-arrow {
+            width: 100%;
+            justify-content: center;
+            padding: 12px 20px;
+            font-size: 14px;
+        }
+        
+        /* Mobile Progress */
+        .progress-container {
+            margin: 1.5rem 0;
+            height: 6px;
+        }
+        
+        /* Mobile Sidebar */
+        .sidebar .sidebar-content {
+            padding: 1rem;
+            border-radius: 10px;
+        }
+        
+        .nav-step {
+            padding: 8px 12px;
+            margin: 6px 0;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        
+        .nav-step-number {
+            width: 25px;
+            height: 25px;
+            margin-right: 10px;
+            font-size: 12px;
+        }
+        
+        /* Mobile Forms */
+        .stButton > button {
+            width: 100%;
+            padding: 12px 20px;
+            font-size: 14px;
+            margin: 0.5rem 0;
+        }
+        
+        .stFileUploader {
+            padding: 1.5rem 1rem;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+        
+        .stSelectbox > div > div > div,
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea,
+        .stDateInput > div > div > input {
+            font-size: 14px;
+            padding: 8px 12px;
+        }
+        
+        /* Mobile Status Messages */
+        .success-message, .error-message, .warning-message, .info-message {
+            padding: 1rem;
+            border-radius: 10px;
+            margin: 0.8rem 0;
+            font-size: 14px;
+        }
+        
+        /* Mobile Columns - Stack on mobile */
+        .stColumns > div {
+            min-width: 100% !important;
+            margin-bottom: 1rem;
+        }
+        
+        /* Mobile Charts and Maps */
+        .plotly-graph-div {
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Hide complex elements on very small screens */
+        @media (max-width: 480px) {
+            .feature-card h3 {
+                font-size: 1.2rem;
+            }
+            
+            .feature-card p {
+                font-size: 0.9rem;
+                line-height: 1.4;
+            }
+            
+            .metric-number {
+                font-size: 1.8rem;
+            }
+            
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .step-title {
+                font-size: 1.5rem;
+            }
+        }
+    }
+    
+    /* Landscape Mobile (orientation specific) */
+    @media (max-width: 767px) and (orientation: landscape) {
+        .block-container {
+            margin: 0.5rem;
+            padding: 1rem;
+        }
+        
+        .step-header {
+            margin-bottom: 1.5rem;
+        }
+        
+        .nav-arrows {
+            flex-direction: row;
+            margin: 1.5rem 0;
+        }
+        
+        .nav-arrow {
+            width: auto;
+            flex: 1;
+            margin: 0 0.5rem;
+        }
+    }
+    
+    /* Touch-friendly interactions */
+    @media (hover: none) and (pointer: coarse) {
+        .nav-step, .nav-arrow, .stButton > button {
+            min-height: 44px;
+        }
+        
+        .feature-card:hover {
+            transform: none;
+        }
+        
+        .metric-card:hover {
+            transform: none;
+        }
+    }
+    
+    /* High DPI displays */
+    @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+        .feature-card, .metric-card {
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
         }
     }
     </style>
