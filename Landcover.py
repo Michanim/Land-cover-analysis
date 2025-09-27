@@ -1125,107 +1125,331 @@ elif current_step == 2:  # Satellite Data
             if st.session_state.gdf is None:
                 st.markdown('<div class="warning-message">⚠️ Please upload an AOI (GeoJSON) first in the previous step.</div>', unsafe_allow_html=True)
             else:
-                st.markdown("""
-                <div class="feature-card">
-                    <h3>📡 Satellite Data Configuration</h3>
-                    <p>Configure parameters for Sentinel-2 imagery download from Google Earth Engine.</p>
-                </div>
-                """, unsafe_allow_html=True)
+                # Data download options
+                download_type = st.radio(
+                    "Select download type:",
+                    ["Single Time Period", "Multi-Year Comparison", "Year-by-Year Analysis"],
+                    horizontal=True
+                )
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input("Start Date", value=date(2023, 1, 1))
-                    cloud_cover = st.slider("Maximum Cloud Cover (%)", 0, 100, 20)
-                with col2:
-                    end_date = st.date_input("End Date", value=date(2023, 12, 31))
-                    resolution = st.selectbox("Spatial Resolution (m)", [10, 20, 60], index=0)
+                if download_type == "Single Time Period":
+                    st.markdown("""
+                    <div class="feature-card">
+                        <h3>📡 Single Time Period Download</h3>
+                        <p>Download satellite data for a specific time period.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        start_date = st.date_input("Start Date", value=date(2023, 1, 1))
+                        cloud_cover = st.slider("Maximum Cloud Cover (%)", 0, 100, 20)
+                    with col2:
+                        end_date = st.date_input("End Date", value=date(2023, 12, 31))
+                        resolution = st.selectbox("Spatial Resolution (m)", [10, 20, 60], index=0)
+                    
+                    if st.button("🛰️ Download Sentinel-2 Data", type="primary"):
+                        download_single_period(start_date, end_date, cloud_cover, resolution)
                 
-                if st.button("🛰️ Download Sentinel-2 Data", type="primary"):
-                    try:
-                        with st.spinner("🔄 Processing satellite data..."):
-                            # Convert GeoDataFrame to Earth Engine geometry
-                            geom_json = json.loads(st.session_state.gdf.to_json())
-                            ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
-                            
-                            # Create image collection
-                            collection = ee.ImageCollection('COPERNICUS/S2_SR') \
-                                .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
-                                .filterBounds(ee_geom) \
-                                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
-                            
-                            common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
-                            collection = collection.map(lambda image: image.select(common_bands))
-                            
-                            size = collection.size()
-                            if size.getInfo() == 0:
-                                st.markdown('<div class="error-message">❌ No images found. Try adjusting the date range or cloud cover threshold.</div>', unsafe_allow_html=True)
-                            else:
-                                st.markdown(f'<div class="success-message">✅ Found {size.getInfo()} images</div>', unsafe_allow_html=True)
-                                
-                                # Create median composite
-                                image = collection.map(mask_clouds).median().clip(ee_geom)
-                                image = calculate_ndvi(image)
-                                image = calculate_ndwi(image)
-                                
-                                st.session_state.ee_image = image
-                                
-                                # Extract features
-                                features = image.sample(region=ee_geom, scale=10, numPixels=1000, geometries=True)
-                                feature_info = features.getInfo()
-                                
-                                if feature_info and 'features' in feature_info:
-                                    feature_data = []
-                                    for feature in feature_info['features']:
-                                        props = feature['properties']
-                                        if 'geometry' in feature and feature['geometry']['type'] == 'Point':
-                                            coords = feature['geometry']['coordinates']
-                                            props['longitude'] = coords[0]
-                                            props['latitude'] = coords[1]
-                                        feature_data.append(props)
-                                    
-                                    feature_df = pd.DataFrame(feature_data)
-                                    st.session_state.feature_data = feature_df
-                                    
-                                    # Display success metrics
-                                    col1, col2, col3 = st.columns(3)
-                                    with col1:
-                                        st.markdown(f"""<div class="metric-card">
-                                            <div class="metric-number">{len(feature_df)}</div>
-                                            <div class="metric-label">Extracted Points</div>
-                                        </div>""", unsafe_allow_html=True)
-                                    with col2:
-                                        if 'NDVI' in feature_df.columns:
-                                            avg_ndvi = feature_df['NDVI'].mean()
-                                            st.markdown(f"""<div class="metric-card">
-                                                <div class="metric-number">{avg_ndvi:.3f}</div>
-                                                <div class="metric-label">Avg NDVI</div>
-                                            </div>""", unsafe_allow_html=True)
-                                    with col3:
-                                        if 'NDWI' in feature_df.columns:
-                                            avg_ndwi = feature_df['NDWI'].mean()
-                                            st.markdown(f"""<div class="metric-card">
-                                                <div class="metric-number">{avg_ndwi:.3f}</div>
-                                                <div class="metric-label">Avg NDWI</div>
-                                            </div>""", unsafe_allow_html=True)
-                                    
-                                    # Image preview
-                                    st.markdown("""
-                                    <div class="feature-card">
-                                        <h3>📷 Image Preview</h3>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                                    
-                                    vis_params = {'bands': ['B4', 'B3', 'B2'], 'min': 0.05, 'max': 0.3, 'gamma': 1.4}
-                                    url = image.select(['B4', 'B3', 'B2']).getThumbURL({
-                                        'dimensions': 800,
-                                        'region': ee_geom,
-                                        'format': 'png',
-                                        **vis_params
-                                    })
-                                    st.image(url, caption="Sentinel-2 RGB Composite", use_container_width=True)
-                                    
-                    except Exception as e:
-                        st.markdown(f'<div class="error-message">❌ Error downloading satellite data: {e}</div>', unsafe_allow_html=True)
+                elif download_type == "Multi-Year Comparison":
+                    st.markdown("""
+                    <div class="feature-card">
+                        <h3>📊 Multi-Year Comparison</h3>
+                        <p>Compare satellite imagery between two different years.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("First Time Period")
+                        start_year_1 = st.selectbox("Start Year", range(2015, 2025), value=2020, key="start_1")
+                        end_year_1 = st.selectbox("End Year", range(2015, 2025), value=2020, key="end_1")
+                        
+                    with col2:
+                        st.subheader("Second Time Period")
+                        start_year_2 = st.selectbox("Start Year", range(2015, 2025), value=2023, key="start_2")
+                        end_year_2 = st.selectbox("End Year", range(2015, 2025), value=2023, key="end_2")
+                    
+                    cloud_cover = st.slider("Maximum Cloud Cover (%)", 0, 100, 20, key="multi_cloud")
+                    
+                    if st.button("🔄 Compare Years", type="primary"):
+                        compare_multiple_years(start_year_1, end_year_1, start_year_2, end_year_2, cloud_cover)
+                
+                elif download_type == "Year-by-Year Analysis":
+                    st.markdown("""
+                    <div class="feature-card">
+                        <h3>📈 Year-by-Year Analysis</h3>
+                        <p>Download and analyze data for multiple consecutive years.</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        start_year = st.selectbox("Start Year", range(2015, 2024), value=2020)
+                        years_to_analyze = st.slider("Number of Years", 2, 8, 4)
+                    with col2:
+                        cloud_cover = st.slider("Maximum Cloud Cover (%)", 0, 100, 20, key="yearly_cloud")
+                        season = st.selectbox("Season Focus", ["Full Year", "Spring (Mar-May)", "Summer (Jun-Aug)", "Fall (Sep-Nov)", "Winter (Dec-Feb)"])
+                    
+                    if st.button("📅 Analyze Multiple Years", type="primary"):
+                        analyze_yearly_data(start_year, years_to_analyze, cloud_cover, season)
+
+def download_single_period(start_date, end_date, cloud_cover, resolution):
+    """Download data for a single time period"""
+    try:
+        with st.spinner("🔄 Processing satellite data..."):
+            geom_json = json.loads(st.session_state.gdf.to_json())
+            ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
+            
+            collection = ee.ImageCollection('COPERNICUS/S2_SR') \
+                .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
+                .filterBounds(ee_geom) \
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+            
+            common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
+            collection = collection.map(lambda image: image.select(common_bands))
+            
+            size = collection.size().getInfo()
+            if size == 0:
+                st.markdown('<div class="error-message">❌ No images found. Try adjusting parameters.</div>', unsafe_allow_html=True)
+                return
+            
+            st.markdown(f'<div class="success-message">✅ Found {size} images for {start_date} to {end_date}</div>', unsafe_allow_html=True)
+            
+            image = collection.map(mask_clouds).median().clip(ee_geom)
+            image = calculate_ndvi(image)
+            image = calculate_ndwi(image)
+            
+            st.session_state.ee_image = image
+            
+            # Extract features with date labels
+            features = image.sample(region=ee_geom, scale=10, numPixels=1000, geometries=True)
+            feature_info = features.getInfo()
+            
+            if feature_info and 'features' in feature_info:
+                feature_data = []
+                for feature in feature_info['features']:
+                    props = feature['properties']
+                    if 'geometry' in feature and feature['geometry']['type'] == 'Point':
+                        coords = feature['geometry']['coordinates']
+                        props['longitude'] = coords[0]
+                        props['latitude'] = coords[1]
+                    # Add temporal information
+                    props['data_year'] = start_date.year
+                    props['date_range'] = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+                    props['season'] = get_season(start_date, end_date)
+                    feature_data.append(props)
+                
+                feature_df = pd.DataFrame(feature_data)
+                st.session_state.feature_data = feature_df
+                
+                display_single_period_results(feature_df, start_date, end_date)
+                
+    except Exception as e:
+        st.markdown(f'<div class="error-message">❌ Error downloading satellite data: {e}</div>', unsafe_allow_html=True)
+
+def compare_multiple_years(start_year_1, end_year_1, start_year_2, end_year_2, cloud_cover):
+    """Compare satellite data between two time periods"""
+    try:
+        with st.spinner("🔄 Comparing data between years..."):
+            geom_json = json.loads(st.session_state.gdf.to_json())
+            ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
+            
+            # Process first time period
+            date_1_start = date(start_year_1, 1, 1)
+            date_1_end = date(end_year_1, 12, 31)
+            
+            collection_1 = ee.ImageCollection('COPERNICUS/S2_SR') \
+                .filterDate(date_1_start.strftime('%Y-%m-%d'), date_1_end.strftime('%Y-%m-%d')) \
+                .filterBounds(ee_geom) \
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+            
+            # Process second time period
+            date_2_start = date(start_year_2, 1, 1)
+            date_2_end = date(end_year_2, 12, 31)
+            
+            collection_2 = ee.ImageCollection('COPERNICUS/S2_SR') \
+                .filterDate(date_2_start.strftime('%Y-%m-%d'), date_2_end.strftime('%Y-%m-%d')) \
+                .filterBounds(ee_geom) \
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+            
+            common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
+            collection_1 = collection_1.map(lambda image: image.select(common_bands))
+            collection_2 = collection_2.map(lambda image: image.select(common_bands))
+            
+            size_1 = collection_1.size().getInfo()
+            size_2 = collection_2.size().getInfo()
+            
+            if size_1 == 0 or size_2 == 0:
+                st.markdown('<div class="error-message">❌ No images found for one or both time periods.</div>', unsafe_allow_html=True)
+                return
+            
+            st.markdown(f'<div class="success-message">✅ Found {size_1} images for {start_year_1}-{end_year_1} and {size_2} images for {start_year_2}-{end_year_2}</div>', unsafe_allow_html=True)
+            
+            # Create composites
+            image_1 = collection_1.map(mask_clouds).median().clip(ee_geom)
+            image_1 = calculate_ndvi(image_1)
+            image_1 = calculate_ndwi(image_1)
+            
+            image_2 = collection_2.map(mask_clouds).median().clip(ee_geom)
+            image_2 = calculate_ndvi(image_2)
+            image_2 = calculate_ndwi(image_2)
+            
+            # Store both images for comparison
+            if 'yearly_comparison' not in st.session_state:
+                st.session_state.yearly_comparison = {}
+            
+            st.session_state.yearly_comparison = {
+                'image_1': image_1,
+                'image_2': image_2,
+                'year_1': f"{start_year_1}-{end_year_1}",
+                'year_2': f"{start_year_2}-{end_year_2}",
+                'dates_1': f"{date_1_start.strftime('%Y-%m-%d')} to {date_1_end.strftime('%Y-%m-%d')}",
+                'dates_2': f"{date_2_start.strftime('%Y-%m-%d')} to {date_2_end.strftime('%Y-%m-%d')}"
+            }
+            
+            display_comparison_results(image_1, image_2, start_year_1, end_year_1, start_year_2, end_year_2)
+            
+    except Exception as e:
+        st.markdown(f'<div class="error-message">❌ Error comparing years: {e}</div>', unsafe_allow_html=True)
+
+def analyze_yearly_data(start_year, years_to_analyze, cloud_cover, season):
+    """Analyze data year by year"""
+    try:
+        with st.spinner(f"🔄 Analyzing {years_to_analyze} years of data..."):
+            geom_json = json.loads(st.session_state.gdf.to_json())
+            ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
+            
+            yearly_data = []
+            yearly_images = {}
+            
+            for i in range(years_to_analyze):
+                current_year = start_year + i
+                
+                # Get season dates
+                if season == "Spring (Mar-May)":
+                    year_start = date(current_year, 3, 1)
+                    year_end = date(current_year, 5, 31)
+                elif season == "Summer (Jun-Aug)":
+                    year_start = date(current_year, 6, 1)
+                    year_end = date(current_year, 8, 31)
+                elif season == "Fall (Sep-Nov)":
+                    year_start = date(current_year, 9, 1)
+                    year_end = date(current_year, 11, 30)
+                elif season == "Winter (Dec-Feb)":
+                    year_start = date(current_year, 12, 1)
+                    year_end = date(current_year + 1, 2, 28)
+                else:  # Full Year
+                    year_start = date(current_year, 1, 1)
+                    year_end = date(current_year, 12, 31)
+                
+                collection = ee.ImageCollection('COPERNICUS/S2_SR') \
+                    .filterDate(year_start.strftime('%Y-%m-%d'), year_end.strftime('%Y-%m-%d')) \
+                    .filterBounds(ee_geom) \
+                    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+                
+                common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
+                collection = collection.map(lambda image: image.select(common_bands))
+                
+                size = collection.size().getInfo()
+                
+                if size > 0:
+                    image = collection.map(mask_clouds).median().clip(ee_geom)
+                    image = calculate_ndvi(image)
+                    image = calculate_ndwi(image)
+                    
+                    # Calculate statistics
+                    stats = image.reduceRegion(
+                        reducer=ee.Reducer.mean(),
+                        geometry=ee_geom,
+                        scale=10,
+                        maxPixels=1e9
+                    ).getInfo()
+                    
+                    yearly_data.append({
+                        'year': current_year,
+                        'season': season,
+                        'date_range': f"{year_start.strftime('%Y-%m-%d')} to {year_end.strftime('%Y-%m-%d')}",
+                        'image_count': size,
+                        'avg_ndvi': stats.get('NDVI', 0),
+                        'avg_ndwi': stats.get('NDWI', 0),
+                        'avg_blue': stats.get('B2', 0),
+                        'avg_green': stats.get('B3', 0),
+                        'avg_red': stats.get('B4', 0),
+                        'avg_nir': stats.get('B8', 0)
+                    })
+                    
+                    yearly_images[current_year] = image
+                
+            if yearly_data:
+                st.session_state.yearly_analysis = {
+                    'data': yearly_data,
+                    'images': yearly_images,
+                    'season': season
+                }
+                
+                display_yearly_analysis_results(yearly_data, yearly_images, season)
+            else:
+                st.markdown('<div class="error-message">❌ No data found for the specified years and parameters.</div>', unsafe_allow_html=True)
+                
+    except Exception as e:
+        st.markdown(f'<div class="error-message">❌ Error analyzing yearly data: {e}</div>', unsafe_allow_html=True)
+
+def get_season(start_date, end_date):
+    """Determine season based on date range"""
+    start_month = start_date.month
+    end_month = end_date.month
+    
+    if start_month == end_month:
+        if start_month in [12, 1, 2]:
+            return "Winter"
+        elif start_month in [3, 4, 5]:
+            return "Spring"
+        elif start_month in [6, 7, 8]:
+            return "Summer"
+        elif start_month in [9, 10, 11]:
+            return "Fall"
+    return "Mixed Seasons"
+
+def display_single_period_results(feature_df, start_date, end_date):
+    """Display results for single time period"""
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-number">{len(feature_df)}</div>
+            <div class="metric-label">Extracted Points</div>
+        </div>""", unsafe_allow_html=True)
+    with col2:
+        if 'NDVI' in feature_df.columns:
+            avg_ndvi = feature_df['NDVI'].mean()
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-number">{avg_ndvi:.3f}</div>
+                <div class="metric-label">Avg NDVI ({start_date.year})</div>
+            </div>""", unsafe_allow_html=True)
+    with col3:
+        if 'NDWI' in feature_df.columns:
+            avg_ndwi = feature_df['NDWI'].mean()
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-number">{avg_ndwi:.3f}</div>
+                <div class="metric-label">Avg NDWI ({start_date.year})</div>
+            </div>""", unsafe_allow_html=True)
+
+def display_comparison_results(image_1, image_2, start_year_1, end_year_1, start_year_2, end_year_2):
+    """Display comparison results between two time periods"""
+    st.markdown(f"""
+    <div class="feature-card">
+        <h3>📊 Comparison Results: {start_year_1}-{end_year_1} vs {start_year_2}-{end_year_2}</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    geom_json = json.loads(st.session_state.gdf.to_json())
+    ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
+    
+    with col1:
+        st.subheader(f"📅 {start_year_1}-{end_year_1}")
+        vis_
 
 elif current_step == 3:  # Visualization
     if st.session_state.feature_data is not None:
