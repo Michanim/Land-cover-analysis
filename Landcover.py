@@ -11,8 +11,6 @@ import zipfile
 import os
 import tempfile
 import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 # ML imports
 from sklearn.model_selection import train_test_split
@@ -32,29 +30,684 @@ try:
 except ImportError:
     EE_AVAILABLE = False
 
+# Raster processing imports
+try:
+    import rasterio
+    from rasterio.features import shapes
+    from rasterio.transform import from_bounds
+    RASTER_AVAILABLE = True
+except ImportError:
+    RASTER_AVAILABLE = False
+
 # --- Initialize session state ---
 if 'df' not in st.session_state:
     st.session_state.df = None
 if 'gdf' not in st.session_state:
     st.session_state.gdf = None
-if 'ee_images' not in st.session_state:
-    st.session_state.ee_images = {}  # Store multiple years
+if 'ee_image' not in st.session_state:
+    st.session_state.ee_image = None
+if 'trained_model' not in st.session_state:
+    st.session_state.trained_model = None
 if 'feature_data' not in st.session_state:
-    st.session_state.feature_data = {}  # Store features by year
+    st.session_state.feature_data = None
 if 'ee_authenticated' not in st.session_state:
     st.session_state.ee_authenticated = False
-if 'trained_models' not in st.session_state:
-    st.session_state.trained_models = {}  # Store models by year
 if 'classified_data' not in st.session_state:
-    st.session_state.classified_data = {}  # Store classifications by year
-if 'comparison_results' not in st.session_state:
-    st.session_state.comparison_results = None
+    st.session_state.classified_data = None
+if 'new_aoi_gdf' not in st.session_state:
+    st.session_state.new_aoi_gdf = None
+if 'new_classification_results' not in st.session_state:
+    st.session_state.new_classification_results = None
 if 'current_step' not in st.session_state:
     st.session_state.current_step = 0
 
-# ... (keep your existing CSS styling) ...
+    # --- Dark Mode Professional Styling ---
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    /* Global Dark Mode Styling */
+    .main {
+        background: linear-gradient(135deg, #0a0e27 0%, #1a1d3a 50%, #2d1b69 100%);
+        min-height: 100vh;
+        font-family: 'Inter', sans-serif;
+        color: #ffffff;
+    }
+    
+    .block-container {
+        padding: 2rem 1rem;
+        max-width: 1200px;
+        background: rgba(30, 41, 59, 0.9);
+        border-radius: 20px;
+        backdrop-filter: blur(20px);
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        margin-top: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    /* Sidebar Dark Styling */
+    .sidebar .sidebar-content {
+        background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+        border-radius: 15px;
+        padding: 1rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    /* Navigation Steps */
+    .nav-step {
+        display: flex;
+        align-items: center;
+        padding: 12px 20px;
+        margin: 8px 0;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.05);
+        color: #ffffff;
+        text-decoration: none;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .nav-step:hover {
+        background: rgba(255, 255, 255, 0.1);
+        transform: translateX(5px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        border-color: rgba(102, 126, 234, 0.5);
+    }
+    
+    .nav-step.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        border-color: rgba(102, 126, 234, 0.8);
+    }
+    
+    .nav-step-number {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        font-weight: 600;
+        font-size: 14px;
+        color: #ffffff;
+    }
+    
+    /* Navigation Arrows */
+    .nav-arrows {
+        display: flex;
+        justify-content: space-between;
+        margin: 3rem 0 2rem 0;
+        padding: 0 2rem;
+    }
+    
+    .nav-arrow {
+        display: flex;
+        align-items: center;
+        padding: 15px 25px;
+        border-radius: 50px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+    }
+    
+    .nav-arrow:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5);
+    }
+    
+    .nav-arrow.disabled {
+        background: #4a5568;
+        cursor: not-allowed;
+        box-shadow: none;
+        color: #a0a0a0;
+    }
+    
+    .nav-arrow.disabled:hover {
+        transform: none;
+    }
+    
+    /* Progress Bar */
+    .progress-container {
+        background: rgba(255, 255, 255, 0.1);
+        height: 8px;
+        border-radius: 10px;
+        margin: 2rem 0;
+        overflow: hidden;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px;
+        transition: width 0.5s ease;
+    }
+    
+    /* Cards and Containers - Dark Mode */
+    .feature-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(51, 65, 85, 0.8) 100%);
+        border-radius: 20px;
+        padding: 2rem;
+        margin: 1rem 0;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        color: #ffffff;
+    }
+    
+    .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+        border-color: rgba(102, 126, 234, 0.3);
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 20px;
+        text-align: center;
+        box-shadow: 0 20px 40px rgba(102, 126, 234, 0.3);
+        margin: 1rem 0;
+        transition: transform 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: scale(1.05);
+        box-shadow: 0 25px 50px rgba(102, 126, 234, 0.4);
+    }
+    
+    .metric-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0;
+        color: #ffffff;
+    }
+    
+    .metric-label {
+        font-size: 1rem;
+        opacity: 0.9;
+        margin-top: 0.5rem;
+        color: #ffffff;
+    }
+    
+    /* Buttons - Dark Mode */
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        padding: 12px 30px;
+        font-weight: 600;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5);
+    }
+    
+    /* File Uploader - Dark Mode */
+    .stFileUploader {
+        border: 2px dashed #667eea;
+        border-radius: 20px;
+        padding: 2rem;
+        background: rgba(30, 41, 59, 0.5);
+        text-align: center;
+        transition: all 0.3s ease;
+        color: #ffffff;
+    }
+    
+    .stFileUploader:hover {
+        border-color: #764ba2;
+        background: rgba(51, 65, 85, 0.7);
+    }
+    
+    /* Headers - Dark Mode */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Inter', sans-serif;
+        color: #ffffff;
+        font-weight: 700;
+    }
+    
+    h1 {
+        font-size: 3rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 0.5rem;
+    }
+    
+    .subtitle {
+        font-size: 1.2rem;
+        color: #cbd5e1;
+        margin-bottom: 3rem;
+        text-align: center;
+    }
+    
+    /* Text Elements - Dark Mode */
+    p, span, div, label {
+        color: #ffffff;
+    }
+    
+    /* Status Messages - Dark Mode */
+    .success-message {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+    }
+    
+    .error-message {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
+    }
+    
+    .warning-message {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
+    }
+    
+    .info-message {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+    }
+    
+    /* Step Header - Dark Mode */
+    .step-header {
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+    
+    .step-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 1rem;
+    }
+    
+    .step-description {
+        font-size: 1.1rem;
+        color: #cbd5e1;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    
+    /* Streamlit Elements - Dark Mode */
+    .stSelectbox > div > div > div {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stTextInput > div > div > input {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stTextArea > div > div > textarea {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stDateInput > div > div > input {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stSlider > div > div > div {
+        color: #ffffff;
+    }
+    
+    .stRadio > div {
+        background-color: rgba(30, 41, 59, 0.5);
+        color: #ffffff;
+        border-radius: 10px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stMultiSelect > div > div {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    /* DataFrames - Dark Mode */
+    .stDataFrame {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+        border-radius: 10px;
+    }
+    
+    /* Expander - Dark Mode */
+    .streamlit-expanderHeader {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: rgba(30, 41, 59, 0.7);
+        color: #ffffff;
+    }
+    
+    /* Tabs - Dark Mode */
+    .stTabs > div > div > div > div {
+        background-color: rgba(30, 41, 59, 0.9);
+        color: #ffffff;
+    }
+    
+    /* Desktop Optimization (1200px+) */
+    @media (min-width: 1200px) {
+        .block-container {
+            max-width: 1400px;
+            padding: 3rem 2rem;
+        }
+        
+        .feature-card {
+            padding: 3rem;
+        }
+        
+        .nav-arrows {
+            padding: 0 3rem;
+        }
+        
+        h1 {
+            font-size: 3.5rem;
+        }
+        
+        .metric-card {
+            padding: 2.5rem;
+        }
+        
+        .metric-number {
+            font-size: 3rem;
+        }
+    }
+    
+    /* Laptop/Tablet Landscape (768px - 1199px) */
+    @media (min-width: 768px) and (max-width: 1199px) {
+        .block-container {
+            max-width: 100%;
+            margin: 1.5rem;
+            padding: 2rem 1.5rem;
+        }
+        
+        .feature-card {
+            padding: 2rem;
+        }
+        
+        .nav-arrows {
+            padding: 0 2rem;
+        }
+        
+        h1 {
+            font-size: 2.8rem;
+        }
+        
+        .metric-number {
+            font-size: 2.2rem;
+        }
+        
+        .metric-card {
+            padding: 1.8rem;
+        }
+        
+        /* Adjust sidebar for tablets */
+        .sidebar .sidebar-content {
+            padding: 1.5rem;
+        }
+    }
+    
+    /* Mobile Portrait and Small Tablets (max-width: 767px) */
+    @media (max-width: 767px) {
+        .main {
+            padding: 0;
+        }
+        
+        .block-container {
+            margin: 0.5rem;
+            padding: 1.5rem 1rem;
+            border-radius: 15px;
+            max-width: calc(100vw - 1rem);
+        }
+        
+        /* Mobile Header */
+        h1 {
+            font-size: 2rem;
+            line-height: 1.2;
+        }
+        
+        .subtitle {
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            padding: 0 0.5rem;
+        }
+        
+        .step-header {
+            margin-bottom: 2rem;
+        }
+        
+        .step-title {
+            font-size: 1.8rem;
+            line-height: 1.3;
+        }
+        
+        .step-description {
+            font-size: 1rem;
+            padding: 0 1rem;
+        }
+        
+        /* Mobile Cards */
+        .feature-card {
+            padding: 1.5rem 1rem;
+            margin: 0.8rem 0;
+            border-radius: 15px;
+        }
+        
+        .metric-card {
+            padding: 1.5rem 1rem;
+            margin: 0.8rem 0;
+            border-radius: 15px;
+        }
+        
+        .metric-number {
+            font-size: 2rem;
+        }
+        
+        .metric-label {
+            font-size: 0.9rem;
+        }
+        
+        /* Mobile Navigation */
+        .nav-arrows {
+            flex-direction: column;
+            gap: 1rem;
+            padding: 0 1rem;
+            margin: 2rem 0 1.5rem 0;
+        }
+        
+        .nav-arrow {
+            width: 100%;
+            justify-content: center;
+            padding: 12px 20px;
+            font-size: 14px;
+        }
+        
+        /* Mobile Progress */
+        .progress-container {
+            margin: 1.5rem 0;
+            height: 6px;
+        }
+        
+        /* Mobile Sidebar */
+        .sidebar .sidebar-content {
+            padding: 1rem;
+            border-radius: 10px;
+        }
+        
+        .nav-step {
+            padding: 8px 12px;
+            margin: 6px 0;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        
+        .nav-step-number {
+            width: 25px;
+            height: 25px;
+            margin-right: 10px;
+            font-size: 12px;
+        }
+        
+        /* Mobile Forms */
+        .stButton > button {
+            width: 100%;
+            padding: 12px 20px;
+            font-size: 14px;
+            margin: 0.5rem 0;
+        }
+        
+        .stFileUploader {
+            padding: 1.5rem 1rem;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+        
+        .stSelectbox > div > div > div,
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea,
+        .stDateInput > div > div > input {
+            font-size: 14px;
+            padding: 8px 12px;
+        }
+        
+        /* Mobile Status Messages */
+        .success-message, .error-message, .warning-message, .info-message {
+            padding: 1rem;
+            border-radius: 10px;
+            margin: 0.8rem 0;
+            font-size: 14px;
+        }
+        
+        /* Mobile Columns - Stack on mobile */
+        .stColumns > div {
+            min-width: 100% !important;
+            margin-bottom: 1rem;
+        }
+        
+        /* Mobile Charts and Maps */
+        .plotly-graph-div {
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Hide complex elements on very small screens */
+        @media (max-width: 480px) {
+            .feature-card h3 {
+                font-size: 1.2rem;
+            }
+            
+            .feature-card p {
+                font-size: 0.9rem;
+                line-height: 1.4;
+            }
+            
+            .metric-number {
+                font-size: 1.8rem;
+            }
+            
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .step-title {
+                font-size: 1.5rem;
+            }
+        }
+    }
+    
+    /* Landscape Mobile (orientation specific) */
+    @media (max-width: 767px) and (orientation: landscape) {
+        .block-container {
+            margin: 0.5rem;
+            padding: 1rem;
+        }
+        
+        .step-header {
+            margin-bottom: 1.5rem;
+        }
+        
+        .nav-arrows {
+            flex-direction: row;
+            margin: 1.5rem 0;
+        }
+        
+        .nav-arrow {
+            width: auto;
+            flex: 1;
+            margin: 0 0.5rem;
+        }
+    }
+    
+    /* Touch-friendly interactions */
+    @media (hover: none) and (pointer: coarse) {
+        .nav-step, .nav-arrow, .stButton > button {
+            min-height: 44px;
+        }
+        
+        .feature-card:hover {
+            transform: none;
+        }
+        
+        .metric-card:hover {
+            transform: none;
+        }
+    }
+    
+    /* High DPI displays */
+    @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+        .feature-card, .metric-card {
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# --- Enhanced Helper Functions ---
+# --- Helper Functions ---
 def calculate_ndvi(image):
     """Calculate NDVI from Sentinel-2 bands"""
     if EE_AVAILABLE:
@@ -69,13 +722,6 @@ def calculate_ndwi(image):
         return image.addBands(ndwi)
     return None
 
-def calculate_ndbi(image):
-    """Calculate NDBI for built-up area detection"""
-    if EE_AVAILABLE:
-        ndbi = image.normalizedDifference(['B11', 'B8']).rename('NDBI')
-        return image.addBands(ndbi)
-    return None
-
 def mask_clouds(image):
     """Mask clouds in Sentinel-2 imagery using the SCL band."""
     if EE_AVAILABLE:
@@ -86,98 +732,338 @@ def mask_clouds(image):
         return image.updateMask(cloud_mask).divide(10000)
     return None
 
-def get_seasonal_collection(year, geometry, cloud_cover=20):
-    """Get seasonal composite for a specific year"""
-    if not EE_AVAILABLE:
-        return None
-    
-    # Define seasonal ranges
-    seasons = {
-        'spring': (f'{year}-03-01', f'{year}-05-31'),
-        'summer': (f'{year}-06-01', f'{year}-08-31'),
-        'autumn': (f'{year}-09-01', f'{year}-11-30'),
-        'winter': (f'{year}-12-01', f'{year}-12-31')  # Adjust for southern hemisphere if needed
-    }
-    
-    seasonal_composites = {}
-    
-    for season, (start_date, end_date) in seasons.items():
-        collection = ee.ImageCollection('COPERNICUS/S2_SR') \
-            .filterDate(start_date, end_date) \
-            .filterBounds(geometry) \
-            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
-        
-        if collection.size().getInfo() > 0:
-            # Create median composite for the season
-            composite = collection.map(mask_clouds).median()
-            composite = calculate_ndvi(composite)
-            composite = calculate_ndwi(composite)
-            composite = calculate_ndbi(composite)
-            seasonal_composites[season] = composite.clip(geometry)
-    
-    return seasonal_composites
-
-def extract_features_by_year(year, image, geometry, num_pixels=1000):
-    """Extract features for a specific year"""
+def authenticate_ee():
+    """Authenticate Google Earth Engine"""
     try:
-        features = image.sample(region=geometry, scale=10, numPixels=num_pixels, geometries=True)
-        feature_info = features.getInfo()
-        
-        if feature_info and 'features' in feature_info:
-            feature_data = []
-            for feature in feature_info['features']:
-                props = feature['properties']
-                if 'geometry' in feature and feature['geometry']['type'] == 'Point':
-                    coords = feature['geometry']['coordinates']
-                    props['longitude'] = coords[0]
-                    props['latitude'] = coords[1]
-                props['year'] = year  # Add year identifier
-                feature_data.append(props)
-            
-            return pd.DataFrame(feature_data)
+        ee.Initialize()
+        st.session_state.ee_authenticated = True
+        return True, "Initialized with existing credentials"
     except Exception as e:
-        st.error(f"Error extracting features for {year}: {str(e)}")
-    return None
+        st.session_state.ee_authenticated = False
+        return False, f"Authentication error: {str(e)}"
 
-def compare_land_cover_changes(year1_data, year2_data, year1, year2):
-    """Compare land cover changes between two years"""
-    if year1_data is None or year2_data is None:
-        return None
+def authenticate_with_json_key(json_key_content):
+    """Authenticate using JSON service account key"""
+    try:
+        if isinstance(json_key_content, str):
+            credentials_dict = json.loads(json_key_content)
+        else:
+            credentials_dict = json_key_content
+            
+        from google.oauth2 import service_account
+        credentials = service_account.Credentials.from_service_account_info(
+            credentials_dict,
+            scopes=['https://www.googleapis.com/auth/earthengine']
+        )
+        ee.Initialize(credentials)
+        st.session_state.ee_authenticated = True
+        return True, "Successfully authenticated with JSON key"
+    except Exception as e:
+        st.session_state.ee_authenticated = False
+        return False, f"Failed to authenticate with JSON key: {str(e)}"
+
+def get_step_completion_status():
+    """Check which steps are completed"""
+    return {
+        'data_uploaded': st.session_state.df is not None or st.session_state.gdf is not None,
+        'ee_authenticated': st.session_state.ee_authenticated,
+        'satellite_data': st.session_state.feature_data is not None,
+        'model_trained': st.session_state.trained_model is not None,
+        'classification_done': st.session_state.classified_data is not None,
+    }
+
+def render_navigation_arrows(current_step, total_steps):
+    """Render navigation arrows"""
+    status = get_step_completion_status()
     
-    # Ensure both datasets have the same coordinate system for comparison
-    if 'longitude' in year1_data.columns and 'latitude' in year1_data.columns:
-        # Create spatial joins for change detection
-        from scipy.spatial import cKDTree
+    # Calculate progress percentage
+    progress = (current_step / (total_steps - 1)) * 100
+    
+    # Render progress bar
+    st.markdown(f"""
+    <div class="progress-container">
+        <div class="progress-bar" style="width: {progress}%;"></div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Render navigation arrows
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col1:
+        if current_step > 0:
+            if st.button("← Previous Step", key="prev_btn", help="Go to previous step"):
+                st.session_state.current_step = current_step - 1
+                st.rerun()
+        else:
+            st.markdown('<div class="nav-arrow disabled">← Previous Step</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"<div style='text-align: center; padding: 15px; font-weight: 600; color: #2c3e50;'>Step {current_step + 1} of {total_steps}</div>", unsafe_allow_html=True)
+    
+    with col3:
+        # Check if current step is completed to enable next button
+        can_proceed = True
+        if current_step == 0:  # Home - always can proceed
+            can_proceed = True
+        elif current_step == 1:  # Data Upload
+            can_proceed = status['data_uploaded']
+        elif current_step == 2:  # Satellite Data
+            can_proceed = status['satellite_data']
+        elif current_step == 3:  # Visualization
+            can_proceed = True  # Can view visualization if data exists
+        elif current_step == 4:  # Model Training
+            can_proceed = status['model_trained']
+        elif current_step == 5:  # Classification
+            can_proceed = status['classification_done']
+        elif current_step == 6:  # Results
+            can_proceed = True
         
-        coords_year1 = year1_data[['longitude', 'latitude']].values
-        coords_year2 = year2_data[['longitude', 'latitude']].values
-        
-        tree = cKDTree(coords_year2)
-        distances, indices = tree.query(coords_year1, k=1)
-        
-        # Create change analysis
-        changes = []
-        for i, (idx, dist) in enumerate(zip(indices, distances)):
-            if dist < 0.001:  # Threshold for same location (approx 100m)
-                class1 = year1_data.iloc[i]['predicted_class']
-                class2 = year2_data.iloc[idx]['predicted_class']
-                if class1 != class2:
-                    changes.append({
-                        'longitude': year1_data.iloc[i]['longitude'],
-                        'latitude': year1_data.iloc[i]['latitude'],
-                        f'class_{year1}': class1,
-                        f'class_{year2}': class2,
-                        'change_type': f'{class1}→{class2}',
-                        'confidence_1': year1_data.iloc[i].get('prediction_confidence', 0),
-                        'confidence_2': year2_data.iloc[idx].get('prediction_confidence', 0)
-                    })
-        
-        return pd.DataFrame(changes)
-    return None
+        if current_step < total_steps - 1:
+            if can_proceed:
+                if st.button("Next Step →", key="next_btn", help="Go to next step"):
+                    st.session_state.current_step = current_step + 1
+                    st.rerun()
+            else:
+                st.markdown('<div class="nav-arrow disabled" title="Complete current step to proceed">Next Step →</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="nav-arrow disabled">Next Step →</div>', unsafe_allow_html=True)
 
-# ... (keep your existing authenticate_ee, authenticate_with_json_key, get_step_completion_status, render_navigation_arrows functions) ...
+# --- Page Configuration ---
+st.set_page_config(
+    page_title="Land Cover Analysis Platform",
+    page_icon="🌍",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- Enhanced Step 2: Satellite Data (Multi-year support) ---
+# --- Navigation Setup ---
+STEPS = [
+    {"title": "Welcome", "icon": "🏠", "description": "Introduction and overview"},
+    {"title": "Data Upload", "icon": "📂", "description": "Upload training data and AOI"},
+    {"title": "Satellite Data", "icon": "🛰️", "description": "Authenticate and download imagery"},
+    {"title": "Visualization", "icon": "📊", "description": "Explore and analyze data"},
+    {"title": "Model Training", "icon": "🤖", "description": "Train ML classification model"},
+    {"title": "Classification", "icon": "🗺️", "description": "Apply model to classify land cover"},
+    {"title": "Results", "icon": "📋", "description": "View results and analytics"},
+    {"title": "Downloads", "icon": "⬇️", "description": "Export data and models"}
+]
+
+# --- Sidebar Navigation ---
+st.sidebar.markdown("""
+<div style="text-align: center; padding: 2rem 0;">
+    <h2 style="color: #ffffff; margin-bottom: 0.5rem;">🌍 Land Cover Analysis</h2>
+    <p style="color: #bdc3c7; margin-bottom: 2rem;">Advanced ML-Powered Platform</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Get completion status
+status = get_step_completion_status()
+
+# Render navigation steps
+for i, step in enumerate(STEPS):
+    # Check if step is completed
+    is_completed = False
+    is_active = i == st.session_state.current_step
+    
+    if i == 0:  # Welcome
+        is_completed = True
+    elif i == 1:  # Data Upload
+        is_completed = status['data_uploaded']
+    elif i == 2:  # Satellite Data
+        is_completed = status['satellite_data']
+    elif i == 3:  # Visualization
+        is_completed = status['satellite_data']
+    elif i == 4:  # Model Training
+        is_completed = status['model_trained']
+    elif i == 5:  # Classification
+        is_completed = status['classification_done']
+    elif i == 6:  # Results
+        is_completed = status['classification_done']
+    elif i == 7:  # Downloads
+        is_completed = True
+    
+    # Create navigation item
+    active_class = "active" if is_active else ""
+    status_icon = "✅" if is_completed else "⏳" if i <= st.session_state.current_step else "⚪"
+    
+    if st.sidebar.button(f"{status_icon} {step['title']}", key=f"nav_{i}", help=step['description']):
+        st.session_state.current_step = i
+        st.rerun()
+
+# --- Main Content ---
+current_step = st.session_state.current_step
+current_step_info = STEPS[current_step]
+
+# Page Header
+st.markdown(f"""
+<div class="step-header">
+    <h1>{current_step_info['icon']} {current_step_info['title']}</h1>
+    <p class="subtitle">{current_step_info['description']}</p>
+</div>
+""", unsafe_allow_html=True)
+
+# --- Step Content ---
+if current_step == 0:  # Welcome
+    st.markdown("""
+    <div class="feature-card">
+        <h2 style="text-align: center; margin-bottom: 2rem;">Welcome to the Future of Land Cover Analysis</h2>
+        <p style="text-align: center; font-size: 1.1rem; color: #7f8c8d; margin-bottom: 3rem;">
+            Harness the power of Google Earth Engine and Machine Learning to analyze and classify land cover with unprecedented accuracy and speed.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Feature cards
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="feature-card" style="text-align: center;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🛰️</div>
+            <h3>Satellite Data Integration</h3>
+            <p>Access Sentinel-2 imagery directly from Google Earth Engine with advanced cloud masking and spectral indices calculation.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="feature-card" style="text-align: center;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🤖</div>
+            <h3>Machine Learning Pipeline</h3>
+            <p>Train state-of-the-art Random Forest models for accurate land cover classification with comprehensive accuracy metrics.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="feature-card" style="text-align: center;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📊</div>
+            <h3>Advanced Analytics</h3>
+            <p>Interactive visualizations, spatial analysis, and professional reporting tools for comprehensive land cover insights.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Process overview
+    st.markdown("""
+    <div class="feature-card">
+        <h3 style="text-align: center; margin-bottom: 2rem;">Analysis Workflow</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div style="text-align: center; flex: 1; margin: 1rem;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-weight: bold; font-size: 1.2rem;">1</div>
+                <h4>Upload Data</h4>
+                <p>Upload your AOI and training datasets</p>
+            </div>
+            <div style="text-align: center; flex: 1; margin: 1rem;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-weight: bold; font-size: 1.2rem;">2</div>
+                <h4>Fetch Imagery</h4>
+                <p>Download satellite data from Earth Engine</p>
+            </div>
+            <div style="text-align: center; flex: 1; margin: 1rem;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-weight: bold; font-size: 1.2rem;">3</div>
+                <h4>Train Model</h4>
+                <p>Build ML classification models</p>
+            </div>
+            <div style="text-align: center; flex: 1; margin: 1rem;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-weight: bold; font-size: 1.2rem;">4</div>
+                <h4>Analyze Results</h4>
+                <p>View classifications and export findings</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+elif current_step == 1:  # Data Upload
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        <div class="feature-card">
+            <h3>📊 Training Dataset (CSV)</h3>
+            <p>Upload your training data containing spectral features and land cover labels.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        uploaded_file = st.file_uploader("Choose CSV file", type=["csv"], key="csv_upload")
+        if uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                st.session_state.df = df
+                
+                st.markdown('<div class="success-message">✅ CSV loaded successfully!</div>', unsafe_allow_html=True)
+                
+                # Dataset metrics
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.markdown(f"""<div class="metric-card">
+                        <div class="metric-number">{df.shape[0]}</div>
+                        <div class="metric-label">Rows</div>
+                    </div>""", unsafe_allow_html=True)
+                with col_b:
+                    st.markdown(f"""<div class="metric-card">
+                        <div class="metric-number">{df.shape[1]}</div>
+                        <div class="metric-label">Columns</div>
+                    </div>""", unsafe_allow_html=True)
+                with col_c:
+                    st.markdown(f"""<div class="metric-card">
+                        <div class="metric-number">{df.memory_usage(deep=True).sum() // 1024}KB</div>
+                        <div class="metric-label">Size</div>
+                    </div>""", unsafe_allow_html=True)
+                
+                with st.expander("📋 Dataset Preview"):
+                    st.write(df.head())
+                    
+            except Exception as e:
+                st.markdown(f'<div class="error-message">❌ Error loading CSV: {e}</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="feature-card">
+            <h3>🗺️ Area of Interest (GeoJSON)</h3>
+            <p>Upload your study area boundary as a GeoJSON file.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        geojson_file = st.file_uploader("Choose GeoJSON file", type=["geojson"], key="geojson_upload")
+        if geojson_file is not None:
+            try:
+                gdf = gpd.read_file(io.BytesIO(geojson_file.read()))
+                if gdf.crs is None or gdf.crs.to_string() != "EPSG:4326":
+                    gdf = gdf.to_crs("EPSG:4326")
+                st.session_state.gdf = gdf
+                
+                st.markdown('<div class="success-message">✅ GeoJSON loaded successfully!</div>', unsafe_allow_html=True)
+                
+                # AOI metrics
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.markdown(f"""<div class="metric-card">
+                        <div class="metric-number">{len(gdf)}</div>
+                        <div class="metric-label">Features</div>
+                    </div>""", unsafe_allow_html=True)
+                with col_b:
+                    area = gdf.geometry.area.sum()
+                    st.markdown(f"""<div class="metric-card">
+                        <div class="metric-number">{area:.4f}</div>
+                        <div class="metric-label">Area (deg²)</div>
+                    </div>""", unsafe_allow_html=True)
+                
+                # Interactive map
+                center = [gdf.geometry.centroid.y.mean(), gdf.geometry.centroid.x.mean()]
+                m = folium.Map(location=center, zoom_start=12, tiles="OpenStreetMap")
+                folium.GeoJson(
+                    gdf,
+                    style_function=lambda feature: {
+                        'fillColor': '#667eea',
+                        'color': '#764ba2',
+                        'weight': 3,
+                        'fillOpacity': 0.3,
+                    }
+                ).add_to(m)
+                st_folium(m, width=700, height=400)
+                
+            except Exception as e:
+                st.markdown(f'<div class="error-message">❌ Error loading GeoJSON: {e}</div>', unsafe_allow_html=True)
+
 elif current_step == 2:  # Satellite Data
     if not EE_AVAILABLE:
         st.markdown('<div class="error-message">❌ Google Earth Engine is not available. Please install earthengine-api.</div>', unsafe_allow_html=True)
@@ -186,8 +1072,53 @@ elif current_step == 2:  # Satellite Data
         if st.session_state.ee_authenticated:
             st.markdown('<div class="success-message">✅ Google Earth Engine authenticated successfully!</div>', unsafe_allow_html=True)
         else:
-            # ... (keep your existing authentication code) ...
-            pass
+            st.markdown("""
+            <div class="feature-card">
+                <h3>🔐 Earth Engine Authentication Required</h3>
+                <p>Please authenticate with Google Earth Engine to access satellite imagery.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            auth_method = st.radio(
+                "Choose authentication method:",
+                ["JSON Service Account Key", "Interactive Token", "Manual Terminal"],
+                horizontal=True
+            )
+            
+            if auth_method == "JSON Service Account Key":
+                st.markdown("""
+                <div class="info-message">
+                <p>Upload your Google Earth Engine service account JSON key file from the Google Cloud Console.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    json_key_file = st.file_uploader("Upload JSON Key File", type=["json"], key="json_file_uploader")
+                with col2:
+                    json_key_text = st.text_area("Or paste JSON content", placeholder='{"type": "service_account", ...}', height=150)
+                
+                if st.button("🔑 Authenticate with JSON Key", type="primary"):
+                    json_content = None
+                    if json_key_file is not None:
+                        try:
+                            json_content = json.load(json_key_file)
+                        except Exception as e:
+                            st.markdown(f'<div class="error-message">❌ Error reading JSON file: {e}</div>', unsafe_allow_html=True)
+                    elif json_key_text.strip():
+                        try:
+                            json_content = json.loads(json_key_text.strip())
+                        except Exception as e:
+                            st.markdown(f'<div class="error-message">❌ Error parsing JSON: {e}</div>', unsafe_allow_html=True)
+                    
+                    if json_content:
+                        with st.spinner("🔄 Authenticating..."):
+                            success, message = authenticate_with_json_key(json_content)
+                        if success:
+                            st.markdown(f'<div class="success-message">✅ {message}</div>', unsafe_allow_html=True)
+                            st.rerun()
+                        else:
+                            st.markdown(f'<div class="error-message">❌ {message}</div>', unsafe_allow_html=True)
         
         # Only show download options if authenticated and AOI is available
         if st.session_state.ee_authenticated:
@@ -196,546 +1127,503 @@ elif current_step == 2:  # Satellite Data
             else:
                 st.markdown("""
                 <div class="feature-card">
-                    <h3>📡 Multi-Year Satellite Data Configuration</h3>
-                    <p>Download Sentinel-2 imagery for multiple years to enable temporal analysis.</p>
+                    <h3>📡 Satellite Data Configuration</h3>
+                    <p>Configure parameters for Sentinel-2 imagery download from Google Earth Engine.</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 with col1:
-                    start_year = st.number_input("Start Year", min_value=2015, max_value=2023, value=2020)
-                    end_year = st.number_input("End Year", min_value=2015, max_value=2023, value=2023)
-                    years = list(range(start_year, end_year + 1))
-                    st.write(f"Selected years: {years}")
-                
-                with col2:
-                    season = st.selectbox("Season", ["spring", "summer", "autumn", "winter", "annual"])
+                    start_date = st.date_input("Start Date", value=date(2023, 1, 1))
                     cloud_cover = st.slider("Maximum Cloud Cover (%)", 0, 100, 20)
-                
-                with col3:
+                with col2:
+                    end_date = st.date_input("End Date", value=date(2023, 12, 31))
                     resolution = st.selectbox("Spatial Resolution (m)", [10, 20, 60], index=0)
-                    num_pixels = st.slider("Sample Points per Year", 500, 5000, 1000, step=500)
                 
-                if st.button("🛰️ Download Multi-Year Data", type="primary"):
+                if st.button("🛰️ Download Sentinel-2 Data", type="primary"):
                     try:
-                        with st.spinner("🔄 Processing multi-year satellite data..."):
+                        with st.spinner("🔄 Processing satellite data..."):
                             # Convert GeoDataFrame to Earth Engine geometry
                             geom_json = json.loads(st.session_state.gdf.to_json())
                             ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
                             
-                            # Initialize storage
-                            st.session_state.ee_images = {}
-                            st.session_state.feature_data = {}
+                            # Create image collection
+                            collection = ee.ImageCollection('COPERNICUS/S2_SR') \
+                                .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
+                                .filterBounds(ee_geom) \
+                                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
                             
-                            progress_bar = st.progress(0)
-                            total_years = len(years)
+                            common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
+                            collection = collection.map(lambda image: image.select(common_bands))
                             
-                            for i, year in enumerate(years):
-                                st.info(f"Processing {year}...")
+                            size = collection.size()
+                            if size.getInfo() == 0:
+                                st.markdown('<div class="error-message">❌ No images found. Try adjusting the date range or cloud cover threshold.</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<div class="success-message">✅ Found {size.getInfo()} images</div>', unsafe_allow_html=True)
                                 
-                                if season == "annual":
-                                    # Annual composite
-                                    collection = ee.ImageCollection('COPERNICUS/S2_SR') \
-                                        .filterDate(f'{year}-01-01', f'{year}-12-31') \
-                                        .filterBounds(ee_geom) \
-                                        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
-                                else:
-                                    # Seasonal composite
-                                    seasonal_data = get_seasonal_collection(year, ee_geom, cloud_cover)
-                                    if seasonal_data and season in seasonal_data:
-                                        collection = ee.ImageCollection([seasonal_data[season]])
-                                    else:
-                                        st.warning(f"No data found for {year} {season}")
-                                        continue
-                                
-                                if collection.size().getInfo() == 0:
-                                    st.warning(f"No images found for {year}. Skipping.")
-                                    continue
-                                
-                                # Create composite
+                                # Create median composite
                                 image = collection.map(mask_clouds).median().clip(ee_geom)
                                 image = calculate_ndvi(image)
                                 image = calculate_ndwi(image)
-                                image = calculate_ndbi(image)
                                 
-                                # Store image
-                                st.session_state.ee_images[year] = image
+                                st.session_state.ee_image = image
                                 
                                 # Extract features
-                                feature_df = extract_features_by_year(year, image, ee_geom, num_pixels)
-                                if feature_df is not None:
-                                    st.session_state.feature_data[year] = feature_df
-                                    st.success(f"✅ {year}: {len(feature_df)} points extracted")
+                                features = image.sample(region=ee_geom, scale=10, numPixels=1000, geometries=True)
+                                feature_info = features.getInfo()
                                 
-                                progress_bar.progress((i + 1) / total_years)
-                            
-                            # Display summary
-                            if st.session_state.feature_data:
-                                st.markdown('<div class="success-message">✅ Multi-year data download completed!</div>', unsafe_allow_html=True)
-                                
-                                # Summary statistics
-                                col1, col2, col3 = st.columns(3)
-                                with col1:
-                                    total_points = sum(len(df) for df in st.session_state.feature_data.values())
-                                    st.markdown(f"""<div class="metric-card">
-                                        <div class="metric-number">{total_points}</div>
-                                        <div class="metric-label">Total Points</div>
-                                    </div>""", unsafe_allow_html=True)
-                                with col2:
-                                    st.markdown(f"""<div class="metric-card">
-                                        <div class="metric-number">{len(st.session_state.feature_data)}</div>
-                                        <div class="metric-label">Years Processed</div>
-                                    </div>""", unsafe_allow_html=True)
-                                with col3:
-                                    if any('NDVI' in df.columns for df in st.session_state.feature_data.values()):
-                                        avg_ndvi = np.mean([df['NDVI'].mean() for df in st.session_state.feature_data.values() if 'NDVI' in df.columns])
-                                        st.markdown(f"""<div class="metric-card">
-                                            <div class="metric-number">{avg_ndvi:.3f}</div>
-                                            <div class="metric-label">Avg NDVI</div>
-                                        </div>""", unsafe_allow_html=True)
-                                
-                                # Temporal NDVI trend
-                                if len(st.session_state.feature_data) > 1:
-                                    years_sorted = sorted(st.session_state.feature_data.keys())
-                                    ndvi_means = []
-                                    for year in years_sorted:
-                                        df = st.session_state.feature_data[year]
-                                        if 'NDVI' in df.columns:
-                                            ndvi_means.append(df['NDVI'].mean())
+                                if feature_info and 'features' in feature_info:
+                                    feature_data = []
+                                    for feature in feature_info['features']:
+                                        props = feature['properties']
+                                        if 'geometry' in feature and feature['geometry']['type'] == 'Point':
+                                            coords = feature['geometry']['coordinates']
+                                            props['longitude'] = coords[0]
+                                            props['latitude'] = coords[1]
+                                        feature_data.append(props)
                                     
-                                    if ndvi_means:
-                                        fig, ax = plt.subplots(figsize=(10, 6))
-                                        ax.plot(years_sorted, ndvi_means, marker='o', linewidth=2, markersize=8)
-                                        ax.set_xlabel('Year')
-                                        ax.set_ylabel('Mean NDVI')
-                                        ax.set_title('Temporal NDVI Trend')
-                                        ax.grid(True, alpha=0.3)
-                                        st.pyplot(fig)
-                            
+                                    feature_df = pd.DataFrame(feature_data)
+                                    st.session_state.feature_data = feature_df
+                                    
+                                    # Display success metrics
+                                    col1, col2, col3 = st.columns(3)
+                                    with col1:
+                                        st.markdown(f"""<div class="metric-card">
+                                            <div class="metric-number">{len(feature_df)}</div>
+                                            <div class="metric-label">Extracted Points</div>
+                                        </div>""", unsafe_allow_html=True)
+                                    with col2:
+                                        if 'NDVI' in feature_df.columns:
+                                            avg_ndvi = feature_df['NDVI'].mean()
+                                            st.markdown(f"""<div class="metric-card">
+                                                <div class="metric-number">{avg_ndvi:.3f}</div>
+                                                <div class="metric-label">Avg NDVI</div>
+                                            </div>""", unsafe_allow_html=True)
+                                    with col3:
+                                        if 'NDWI' in feature_df.columns:
+                                            avg_ndwi = feature_df['NDWI'].mean()
+                                            st.markdown(f"""<div class="metric-card">
+                                                <div class="metric-number">{avg_ndwi:.3f}</div>
+                                                <div class="metric-label">Avg NDWI</div>
+                                            </div>""", unsafe_allow_html=True)
+                                    
+                                    # Image preview
+                                    st.markdown("""
+                                    <div class="feature-card">
+                                        <h3>📷 Image Preview</h3>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                    
+                                    vis_params = {'bands': ['B4', 'B3', 'B2'], 'min': 0.05, 'max': 0.3, 'gamma': 1.4}
+                                    url = image.select(['B4', 'B3', 'B2']).getThumbURL({
+                                        'dimensions': 800,
+                                        'region': ee_geom,
+                                        'format': 'png',
+                                        **vis_params
+                                    })
+                                    st.image(url, caption="Sentinel-2 RGB Composite", use_container_width=True)
+                                    
                     except Exception as e:
                         st.markdown(f'<div class="error-message">❌ Error downloading satellite data: {e}</div>', unsafe_allow_html=True)
 
-# --- Enhanced Step 3: Visualization (Multi-year comparisons) ---
 elif current_step == 3:  # Visualization
-    if not st.session_state.feature_data:
-        st.markdown('<div class="info-message">📥 Please download multi-year satellite data first.</div>', unsafe_allow_html=True)
-    else:
-        years = sorted(st.session_state.feature_data.keys())
+    if st.session_state.feature_data is not None:
+        df = st.session_state.feature_data
         
-        st.markdown(f"""
-        <div class="feature-card">
-            <h3>📊 Multi-Year Data Analysis</h3>
-            <p>Analyzing data from {len(years)} years: {', '.join(map(str, years))}</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Year selection for detailed analysis
-        selected_years = st.multiselect("Select years for comparison:", years, default=years[:2])
-        
-        if len(selected_years) >= 2:
-            # Comparative analysis
-            tab1, tab2, tab3, tab4 = st.tabs(["📈 Temporal Trends", "🔗 Year Comparisons", "🗺️ Spatial Changes", "📊 Statistics"])
-            
-            with tab1:
-                # Temporal trends for key indices
-                indices = ['NDVI', 'NDWI', 'NDBI'] if any(idx in st.session_state.feature_data[years[0]].columns 
-                                                         for idx in ['NDVI', 'NDWI', 'NDBI']) else []
-                
-                if indices:
-                    fig = make_subplots(rows=len(indices), cols=1, subplot_titles=[f'{idx} Trend' for idx in indices])
-                    
-                    for i, idx in enumerate(indices):
-                        years_avail = []
-                        values = []
-                        for year in years:
-                            df = st.session_state.feature_data[year]
-                            if idx in df.columns:
-                                years_avail.append(year)
-                                values.append(df[idx].mean())
-                        
-                        if years_avail:
-                            fig.add_trace(
-                                go.Scatter(x=years_avail, y=values, mode='lines+markers', name=idx),
-                                row=i+1, col=1
-                            )
-                    
-                    fig.update_layout(height=300*len(indices), title_text="Temporal Trends of Spectral Indices")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            with tab2:
-                # Scatter comparisons between years
-                if len(selected_years) == 2:
-                    year1, year2 = selected_years
-                    df1 = st.session_state.feature_data[year1]
-                    df2 = st.session_state.feature_data[year2]
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        index = st.selectbox("Select index for comparison:", ['NDVI', 'NDWI', 'NDBI'])
-                        if index in df1.columns and index in df2.columns:
-                            fig, ax = plt.subplots(figsize=(8, 6))
-                            ax.scatter(df1[index].sample(min(500, len(df1))), 
-                                      df2[index].sample(min(500, len(df2))), alpha=0.6)
-                            ax.plot([0, 1], [0, 1], 'r--', alpha=0.8)
-                            ax.set_xlabel(f'{year1} {index}')
-                            ax.set_ylabel(f'{year2} {index}')
-                            ax.set_title(f'{index} Comparison: {year1} vs {year2}')
-                            st.pyplot(fig)
-                    
-                    with col2:
-                        # Distribution comparison
-                        if index in df1.columns and index in df2.columns:
-                            fig, ax = plt.subplots(figsize=(8, 6))
-                            ax.hist(df1[index].dropna(), bins=50, alpha=0.7, label=str(year1))
-                            ax.hist(df2[index].dropna(), bins=50, alpha=0.7, label=str(year2))
-                            ax.set_xlabel(index)
-                            ax.set_ylabel('Frequency')
-                            ax.legend()
-                            ax.set_title(f'{index} Distribution Comparison')
-                            st.pyplot(fig)
-            
-            with tab3:
-                if len(selected_years) == 2 and 'longitude' in st.session_state.feature_data[years[0]].columns:
-                    year1, year2 = selected_years
-                    df1 = st.session_state.feature_data[year1].sample(min(500, len(st.session_state.feature_data[year1])))
-                    df2 = st.session_state.feature_data[year2].sample(min(500, len(st.session_state.feature_data[year2])))
-                    
-                    fig = go.Figure()
-                    
-                    # Add traces for both years
-                    fig.add_trace(go.Scattermapbox(
-                        lat=df1['latitude'],
-                        lon=df1['longitude'],
-                        mode='markers',
-                        marker=dict(size=8, color='blue'),
-                        name=str(year1),
-                        text=df1.get('NDVI', np.zeros(len(df1)))
-                    ))
-                    
-                    fig.add_trace(go.Scattermapbox(
-                        lat=df2['latitude'],
-                        lon=df2['longitude'],
-                        mode='markers',
-                        marker=dict(size=8, color='red'),
-                        name=str(year2),
-                        text=df2.get('NDVI', np.zeros(len(df2)))
-                    ))
-                    
-                    fig.update_layout(
-                        mapbox_style="open-street-map",
-                        mapbox=dict(zoom=10),
-                        margin={"r":0,"t":0,"l":0,"b":0},
-                        height=600
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            with tab4:
-                # Statistical summary table
-                summary_data = []
-                for year in selected_years:
-                    df = st.session_state.feature_data[year]
-                    summary = {'Year': year, 'Samples': len(df)}
-                    for idx in ['NDVI', 'NDWI', 'NDBI']:
-                        if idx in df.columns:
-                            summary[f'{idx}_mean'] = df[idx].mean()
-                            summary[f'{idx}_std'] = df[idx].std()
-                    summary_data.append(summary)
-                
-                st.dataframe(pd.DataFrame(summary_data).round(4))
-
-# --- Enhanced Step 4: Model Training (Multi-year support) ---
-elif current_step == 4:  # Model Training
-    if not st.session_state.feature_data:
-        st.markdown('<div class="warning-message">⚠️ Please download multi-year satellite data first.</div>', unsafe_allow_html=True)
-    else:
-        years = sorted(st.session_state.feature_data.keys())
-        
-        st.markdown("""
-        <div class="feature-card">
-            <h3>🎯 Multi-Year Model Training</h3>
-            <p>Train models for individual years or combined datasets.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Training configuration
-        col1, col2 = st.columns(2)
-        
+        # Overview metrics
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            training_strategy = st.radio(
-                "Training Strategy:",
-                ["Individual Years", "Combined Dataset", "Transfer Learning"],
-                help="Individual: Train separate models for each year. Combined: Train one model on all data. Transfer: Train on one year, apply to others."
-            )
-            
-            if training_strategy == "Individual Years":
-                selected_years = st.multiselect("Select years to train:", years, default=years[0:1])
-            elif training_strategy == "Combined Dataset":
-                selected_years = years
-            else:  # Transfer Learning
-                source_year = st.selectbox("Source year (training):", years)
-                target_years = st.multiselect("Target years (application):", [y for y in years if y != source_year])
-                selected_years = [source_year]
-        
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-number">{len(df)}</div>
+                <div class="metric-label">Total Pixels</div>
+            </div>""", unsafe_allow_html=True)
         with col2:
-            # Feature selection
-            available_features = []
-            if years:
-                available_features = [col for col in st.session_state.feature_data[years[0]].columns 
-                                    if col not in ['longitude', 'latitude', 'year'] and pd.api.types.is_numeric_dtype(st.session_state.feature_data[years[0]][col])]
-            
-            feature_cols = st.multiselect("Feature columns:", available_features, default=available_features[:5])
-            test_size = st.slider("Test set size (%)", 10, 40, 20) / 100
+            if 'NDVI' in df.columns:
+                st.markdown(f"""<div class="metric-card">
+                    <div class="metric-number">{df['NDVI'].mean():.3f}</div>
+                    <div class="metric-label">Avg NDVI</div>
+                </div>""", unsafe_allow_html=True)
+        with col3:
+            if 'NDWI' in df.columns:
+                st.markdown(f"""<div class="metric-card">
+                    <div class="metric-number">{df['NDWI'].mean():.3f}</div>
+                    <div class="metric-label">Avg NDWI</div>
+                </div>""", unsafe_allow_html=True)
+        with col4:
+            if 'B2' in df.columns:
+                st.markdown(f"""<div class="metric-card">
+                    <div class="metric-number">{df['B2'].mean():.3f}</div>
+                    <div class="metric-label">Avg Blue Band</div>
+                </div>""", unsafe_allow_html=True)
         
-        if st.button("🚀 Train Models", type="primary"):
-            if not feature_cols or not selected_years:
-                st.markdown('<div class="error-message">❌ Please select features and years</div>', unsafe_allow_html=True)
-            else:
-                try:
-                    st.session_state.trained_models = {}
-                    
-                    if training_strategy == "Combined Dataset":
-                        # Combine all years data
-                        combined_data = []
-                        for year in selected_years:
-                            df = st.session_state.feature_data[year].copy()
-                            df['year'] = year
-                            combined_data.append(df)
-                        
-                        combined_df = pd.concat(combined_data, ignore_index=True)
-                        # Train single model on combined data
-                        # ... (your existing training code) ...
-                        
-                    else:
-                        # Train individual models
-                        for year in selected_years:
-                            with st.spinner(f"🔄 Training model for {year}..."):
-                                df = st.session_state.feature_data[year].copy()
-                                
-                                # Create synthetic labels (enhanced for multi-year)
-                                if 'NDVI' in df.columns and 'NDWI' in df.columns:
-                                    def classify_pixel(row):
-                                        ndvi, ndwi, ndbi = row.get('NDVI', 0), row.get('NDWI', 0), row.get('NDBI', 0)
-                                        if ndwi > 0.3: return 'Water'
-                                        elif ndvi > 0.6: return 'Forest'
-                                        elif ndvi > 0.3: return 'Vegetation'
-                                        elif ndbi > 0.1: return 'Urban'
-                                        elif ndvi < 0.1: return 'Bare_Soil'
-                                        else: return 'Mixed'
-                                    df['land_cover'] = df.apply(classify_pixel, axis=1)
-                                
-                                # Train model
-                                X = df[feature_cols].fillna(0)
-                                y = df['land_cover']
-                                
-                                le = LabelEncoder()
-                                y_encoded = le.fit_transform(y)
-                                
-                                X_train, X_test, y_train, y_test = train_test_split(
-                                    X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
-                                )
-                                
-                                scaler = StandardScaler()
-                                X_train_scaled = scaler.fit_transform(X_train)
-                                X_test_scaled = scaler.transform(X_test)
-                                
-                                rf_model = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
-                                rf_model.fit(X_train_scaled, y_train)
-                                
-                                y_pred = rf_model.predict(X_test_scaled)
-                                accuracy = accuracy_score(y_test, y_pred)
-                                
-                                st.session_state.trained_models[year] = {
-                                    'model': rf_model,
-                                    'scaler': scaler,
-                                    'label_encoder': le,
-                                    'feature_cols': feature_cols,
-                                    'accuracy': accuracy
-                                }
-                    
-                    # Display results
-                    if st.session_state.trained_models:
-                        st.markdown('<div class="success-message">✅ Models trained successfully!</div>', unsafe_allow_html=True)
-                        
-                        # Model performance comparison
-                        performance_data = []
-                        for year, model_info in st.session_state.trained_models.items():
-                            performance_data.append({
-                                'Year': year,
-                                'Accuracy': model_info['accuracy'],
-                                'Features': len(model_info['feature_cols'])
-                            })
-                        
-                        perf_df = pd.DataFrame(performance_data)
-                        st.dataframe(perf_df.round(3))
-                        
-                except Exception as e:
-                    st.markdown(f'<div class="error-message">❌ Error training models: {e}</div>', unsafe_allow_html=True)
-
-# --- Enhanced Step 5: Classification (Multi-year support) ---
-elif current_step == 5:  # Classification
-    if not st.session_state.trained_models:
-        st.markdown('<div class="warning-message">⚠️ Please train models first.</div>', unsafe_allow_html=True)
-    else:
-        years = sorted(st.session_state.trained_models.keys())
-        
-        st.markdown("""
-        <div class="feature-card">
-            <h3>🔮 Multi-Year Land Cover Classification</h3>
-            <p>Apply trained models to classify land cover across different years.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Year selection for classification
-        classification_years = st.multiselect("Select years to classify:", years, default=years)
-        
-        if st.button("🚀 Classify Land Cover", type="primary"):
-            st.session_state.classified_data = {}
-            
-            for year in classification_years:
-                try:
-                    with st.spinner(f"🔄 Classifying {year}..."):
-                        model_info = st.session_state.trained_models[year]
-                        feature_data = st.session_state.feature_data[year]
-                        
-                        X = feature_data[model_info['feature_cols']].fillna(0)
-                        X_scaled = model_info['scaler'].transform(X)
-                        predictions = model_info['model'].predict(X_scaled)
-                        prediction_probs = model_info['model'].predict_proba(X_scaled)
-                        
-                        predicted_labels = model_info['label_encoder'].inverse_transform(predictions)
-                        
-                        classified_df = feature_data.copy()
-                        classified_df['predicted_class'] = predicted_labels
-                        classified_df['prediction_confidence'] = prediction_probs.max(axis=1)
-                        classified_df['year'] = year
-                        
-                        st.session_state.classified_data[year] = classified_df
-                        
-                        st.success(f"✅ {year}: {len(classified_df)} pixels classified")
-                
-                except Exception as e:
-                    st.error(f"Error classifying {year}: {str(e)}")
-            
-            if st.session_state.classified_data:
-                st.markdown('<div class="success-message">✅ Multi-year classification completed!</div>', unsafe_allow_html=True)
-
-# --- Enhanced Step 6: Results (Change detection) ---
-elif current_step == 6:  # Results
-    if not st.session_state.classified_data:
-        st.markdown('<div class="warning-message">⚠️ Please complete the classification process first.</div>', unsafe_allow_html=True)
-    else:
-        years = sorted(st.session_state.classified_data.keys())
-        
-        st.markdown("""
-        <div class="feature-card">
-            <h3>📊 Multi-Year Results & Change Detection</h3>
-            <p>Analyze land cover changes across different years.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Year selection for comparison
-        if len(years) >= 2:
-            col1, col2 = st.columns(2)
-            with col1:
-                year1 = st.selectbox("Base Year:", years, index=0)
-            with col2:
-                year2 = st.selectbox("Comparison Year:", [y for y in years if y != year1], 
-                                   index=min(1, len(years)-1))
-            
-            if st.button("🔄 Analyze Changes", type="primary"):
-                st.session_state.comparison_results = compare_land_cover_changes(
-                    st.session_state.classified_data[year1],
-                    st.session_state.classified_data[year2],
-                    year1, year2
-                )
-        
-        # Display results
-        tab1, tab2, tab3 = st.tabs(["📈 Annual Results", "🔄 Change Analysis", "📊 Summary Statistics"])
+        # Visualization tabs
+        tab1, tab2, tab3 = st.tabs(["📊 Distributions", "🔗 Correlations", "🗺️ Spatial Analysis"])
         
         with tab1:
-            # Individual year results
-            selected_year = st.selectbox("Select year to view:", years)
-            if selected_year in st.session_state.classified_data:
-                df = st.session_state.classified_data[selected_year]
-                
-                # Display year-specific results
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.markdown(f"""<div class="metric-card">
-                        <div class="metric-number">{len(df)}</div>
-                        <div class="metric-label">Pixels ({selected_year})</div>
-                    </div>""", unsafe_allow_html=True)
-                with col2:
-                    st.markdown(f"""<div class="metric-card">
-                        <div class="metric-number">{df['predicted_class'].nunique()}</div>
-                        <div class="metric-label">Classes</div>
-                    </div>""", unsafe_allow_html=True)
-                with col3:
-                    avg_conf = df['prediction_confidence'].mean()
-                    st.markdown(f"""<div class="metric-card">
-                        <div class="metric-number">{avg_conf:.3f}</div>
-                        <div class="metric-label">Avg Confidence</div>
-                    </div>""", unsafe_allow_html=True)
-                
-                # Class distribution for selected year
-                class_counts = df['predicted_class'].value_counts()
-                fig, ax = plt.subplots(figsize=(10, 6))
-                class_counts.plot(kind='bar', ax=ax, color=plt.cm.Set3(np.linspace(0, 1, len(class_counts))))
-                ax.set_title(f'Land Cover Distribution - {selected_year}')
-                ax.set_xlabel('Land Cover Class')
-                ax.set_ylabel('Number of Pixels')
-                plt.xticks(rotation=45)
-                st.pyplot(fig)
+            col1, col2 = st.columns(2)
+            with col1:
+                if 'NDVI' in df.columns:
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    ax.hist(df['NDVI'].dropna(), bins=50, alpha=0.7, color='#667eea')
+                    ax.set_xlabel('NDVI')
+                    ax.set_ylabel('Frequency')
+                    ax.set_title('NDVI Distribution')
+                    ax.grid(True, alpha=0.3)
+                    st.pyplot(fig)
+            with col2:
+                if 'NDWI' in df.columns:
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    ax.hist(df['NDWI'].dropna(), bins=50, alpha=0.7, color='#764ba2')
+                    ax.set_xlabel('NDWI')
+                    ax.set_ylabel('Frequency')
+                    ax.set_title('NDWI Distribution')
+                    ax.grid(True, alpha=0.3)
+                    st.pyplot(fig)
         
         with tab2:
-            # Change detection results
-            if st.session_state.comparison_results is not None:
-                changes = st.session_state.comparison_results
-                
-                st.markdown(f"""
-                <div class="feature-card">
-                    <h3>🔄 Land Cover Changes: {year1} → {year2}</h3>
-                    <p>Detected {len(changes)} significant changes</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Change statistics
-                change_counts = changes['change_type'].value_counts()
-                fig, ax = plt.subplots(figsize=(12, 6))
-                change_counts.plot(kind='bar', ax=ax, color=plt.cm.RdYlBu_r(np.linspace(0, 1, len(change_counts))))
-                ax.set_title('Land Cover Change Types')
-                ax.set_xlabel('Change Type')
-                ax.set_ylabel('Number of Changes')
-                plt.xticks(rotation=45)
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 1:
+                fig, ax = plt.subplots(figsize=(12, 8))
+                correlation_matrix = df[numeric_cols].corr()
+                sns.heatmap(correlation_matrix, annot=True, cmap='RdYlBu_r', center=0, ax=ax)
+                ax.set_title('Feature Correlation Matrix')
                 st.pyplot(fig)
-                
-                # Spatial visualization of changes
-                if 'longitude' in changes.columns:
+        
+        with tab3:
+            if 'longitude' in df.columns and 'latitude' in df.columns:
+                if 'NDVI' in df.columns:
                     fig = px.scatter_mapbox(
-                        changes,
+                        df.sample(min(1000, len(df))),
                         lat='latitude',
                         lon='longitude',
-                        color='change_type',
+                        color='NDVI',
                         zoom=10,
                         height=600,
-                        title=f"Land Cover Changes: {year1} to {year2}"
+                        title="NDVI Spatial Distribution",
+                        color_continuous_scale='RdYlGn'
                     )
                     fig.update_layout(mapbox_style="open-street-map")
                     st.plotly_chart(fig, use_container_width=True)
+    
+    else:
+        st.markdown('<div class="info-message">📥 Please download satellite data first to generate visualizations.</div>', unsafe_allow_html=True)
+
+elif current_step == 4:  # Model Training
+    if st.session_state.df is None and st.session_state.feature_data is None:
+        st.markdown('<div class="warning-message">⚠️ Please upload training data or download satellite data first.</div>', unsafe_allow_html=True)
+    else:
+        # Data source selection
+        data_source = st.radio("Select training data source:", ["Uploaded CSV", "Extracted Satellite Features"], horizontal=True)
+        
+        if data_source == "Uploaded CSV" and st.session_state.df is not None:
+            df = st.session_state.df.copy()
+        elif data_source == "Extracted Satellite Features" and st.session_state.feature_data is not None:
+            df = st.session_state.feature_data.copy()
+            # Create synthetic labels
+            if 'NDVI' in df.columns and 'NDWI' in df.columns:
+                def classify_pixel(row):
+                    ndvi, ndwi = row.get('NDVI', 0), row.get('NDWI', 0)
+                    if ndwi > 0.3: return 'Water'
+                    elif ndvi > 0.6: return 'Forest'
+                    elif ndvi > 0.3: return 'Vegetation'
+                    elif ndvi < 0.1: return 'Urban'
+                    else: return 'Bare_Soil'
+                df['land_cover'] = df.apply(classify_pixel, axis=1)
+                st.markdown('<div class="info-message">🏷️ Synthetic labels created based on spectral indices</div>', unsafe_allow_html=True)
+        
+        # Training configuration
+        st.markdown("""
+        <div class="feature-card">
+            <h3>🎯 Model Configuration</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            potential_targets = [col for col in df.columns if df[col].dtype == 'object' or 'class' in col.lower()]
+            target_col = st.selectbox("Target column:", potential_targets)
+            if target_col:
+                st.info(f"Classes: {list(df[target_col].unique())}")
+        
+        with col2:
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            feature_cols = st.multiselect("Feature columns:", numeric_cols, default=numeric_cols[:5])
+            test_size = st.slider("Test set size (%)", 10, 40, 20) / 100
+        
+        if st.button("🚀 Train Model", type="primary"):
+            if not feature_cols or not target_col:
+                st.markdown('<div class="error-message">❌ Please select feature and target columns</div>', unsafe_allow_html=True)
+            else:
+                try:
+                    with st.spinner("🔄 Training model..."):
+                        # Prepare data
+                        X = df[feature_cols].fillna(0)
+                        y = df[target_col]
+                        
+                        # Encode labels
+                        le = LabelEncoder()
+                        y_encoded = le.fit_transform(y)
+                        
+                        # Split data
+                        X_train, X_test, y_train, y_test = train_test_split(
+                            X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
+                        )
+                        
+                        # Scale features
+                        scaler = StandardScaler()
+                        X_train_scaled = scaler.fit_transform(X_train)
+                        X_test_scaled = scaler.transform(X_test)
+                        
+                        # Train model
+                        rf_model = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
+                        rf_model.fit(X_train_scaled, y_train)
+                        
+                        # Predictions
+                        y_pred = rf_model.predict(X_test_scaled)
+                        accuracy = accuracy_score(y_test, y_pred)
+                        
+                        # Store model
+                        st.session_state.trained_model = {
+                            'model': rf_model,
+                            'scaler': scaler,
+                            'label_encoder': le,
+                            'feature_cols': feature_cols,
+                            'accuracy': accuracy
+                        }
+                        
+                        st.markdown(f'<div class="success-message">✅ Model trained successfully! Accuracy: {accuracy:.3f}</div>', unsafe_allow_html=True)
+                        
+                        # Results display
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("""
+                            <div class="feature-card">
+                                <h3>📊 Classification Report</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            report = classification_report(y_test, y_pred, target_names=le.classes_, output_dict=True)
+                            report_df = pd.DataFrame(report).transpose()
+                            st.dataframe(report_df.round(3))
+                        
+                        with col2:
+                            st.markdown("""
+                            <div class="feature-card">
+                                <h3>🎯 Confusion Matrix</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            cm = confusion_matrix(y_test, y_pred)
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            sns.heatmap(cm, annot=True, fmt='d', xticklabels=le.classes_, 
+                                       yticklabels=le.classes_, cmap='Blues', ax=ax)
+                            ax.set_ylabel('True Label')
+                            ax.set_xlabel('Predicted Label')
+                            st.pyplot(fig)
+                        
+                        # Feature importance
+                        st.markdown("""
+                        <div class="feature-card">
+                            <h3>📈 Feature Importance</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        importance_df = pd.DataFrame({
+                            'Feature': feature_cols,
+                            'Importance': rf_model.feature_importances_
+                        }).sort_values('Importance', ascending=False)
+                        
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        sns.barplot(data=importance_df, x='Importance', y='Feature', ax=ax, palette='viridis')
+                        ax.set_title('Feature Importance')
+                        st.pyplot(fig)
+                        
+                except Exception as e:
+                    st.markdown(f'<div class="error-message">❌ Error training model: {e}</div>', unsafe_allow_html=True)
+
+elif current_step == 5:  # Classification
+    if st.session_state.trained_model is None:
+        st.markdown('<div class="warning-message">⚠️ Please train a model first.</div>', unsafe_allow_html=True)
+    elif st.session_state.feature_data is None:
+        st.markdown('<div class="warning-message">⚠️ Please download satellite data first.</div>', unsafe_allow_html=True)
+    else:
+        model_info = st.session_state.trained_model
+        accuracy = model_info['accuracy']
+        
+        st.markdown(f"""
+        <div class="feature-card">
+            <h3>🔮 Land Cover Classification</h3>
+            <p>Apply trained model with accuracy: <strong>{accuracy:.3f}</strong></p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🚀 Classify Land Cover", type="primary"):
+            try:
+                with st.spinner("🔄 Classifying land cover..."):
+                    df = st.session_state.feature_data.copy()
+                    
+                    # Prepare features
+                    feature_cols = model_info['feature_cols']
+                    X = df[feature_cols].fillna(0)
+                    
+                    # Scale and predict
+                    X_scaled = model_info['scaler'].transform(X)
+                    predictions = model_info['model'].predict(X_scaled)
+                    prediction_probs = model_info['model'].predict_proba(X_scaled)
+                    
+                    # Decode labels
+                    predicted_labels = model_info['label_encoder'].inverse_transform(predictions)
+                    
+                    # Add predictions
+                    df['predicted_class'] = predicted_labels
+                    df['prediction_confidence'] = prediction_probs.max(axis=1)
+                    
+                    st.session_state.classified_data = df
+                    
+                    st.markdown('<div class="success-message">✅ Classification completed!</div>', unsafe_allow_html=True)
+                    
+                    # Results metrics
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        total_pixels = len(df)
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-number">{total_pixels}</div>
+                            <div class="metric-label">Pixels Classified</div>
+                        </div>""", unsafe_allow_html=True)
+                    with col2:
+                        num_classes = df['predicted_class'].nunique()
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-number">{num_classes}</div>
+                            <div class="metric-label">Land Cover Classes</div>
+                        </div>""", unsafe_allow_html=True)
+                    with col3:
+                        avg_confidence = df['prediction_confidence'].mean()
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-number">{avg_confidence:.3f}</div>
+                            <div class="metric-label">Avg Confidence</div>
+                        </div>""", unsafe_allow_html=True)
+                    
+                    # Class distribution
+                    st.markdown("""
+                    <div class="feature-card">
+                        <h3>📊 Land Cover Distribution</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    class_counts = df['predicted_class'].value_counts()
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    colors = plt.cm.Set3(np.linspace(0, 1, len(class_counts)))
+                    class_counts.plot(kind='bar', ax=ax, color=colors)
+                    ax.set_title('Predicted Land Cover Distribution')
+                    ax.set_xlabel('Land Cover Class')
+                    ax.set_ylabel('Number of Pixels')
+                    plt.xticks(rotation=45)
+                    st.pyplot(fig)
+                    
+            except Exception as e:
+                st.markdown(f'<div class="error-message">❌ Error during classification: {e}</div>', unsafe_allow_html=True)
+
+elif current_step == 6:  # Results
+    if st.session_state.classified_data is None:
+        st.markdown('<div class="warning-message">⚠️ Please complete the classification process first.</div>', unsafe_allow_html=True)
+    else:
+        df = st.session_state.classified_data
+        
+        # Summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-number">{len(df)}</div>
+                <div class="metric-label">Total Pixels</div>
+            </div>""", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-number">{df['predicted_class'].nunique()}</div>
+                <div class="metric-label">Classes Found</div>
+            </div>""", unsafe_allow_html=True)
+        with col3:
+            avg_confidence = df['prediction_confidence'].mean()
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-number">{avg_confidence:.3f}</div>
+                <div class="metric-label">Avg Confidence</div>
+            </div>""", unsafe_allow_html=True)
+        with col4:
+            high_confidence = (df['prediction_confidence'] > 0.8).sum()
+            pct = 100 * high_confidence / len(df)
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-number">{pct:.1f}%</div>
+                <div class="metric-label">High Confidence</div>
+            </div>""", unsafe_allow_html=True)
+        
+        # Detailed analysis tabs
+        tab1, tab2, tab3 = st.tabs(["📊 Statistics", "🗺️ Spatial View", "📈 Analysis"])
+        
+        with tab1:
+            class_stats = df.groupby('predicted_class').agg({
+                'prediction_confidence': ['count', 'mean', 'std'],
+                'NDVI': ['mean', 'std'] if 'NDVI' in df.columns else lambda x: None,
+                'NDWI': ['mean', 'std'] if 'NDWI' in df.columns else lambda x: None
+            }).round(3)
+            st.dataframe(class_stats)
+        
+        with tab2:
+            if 'longitude' in df.columns and 'latitude' in df.columns:
+                fig = px.scatter_mapbox(
+                    df.sample(min(1000, len(df))),
+                    lat='latitude',
+                    lon='longitude',
+                    color='predicted_class',
+                    zoom=10,
+                    height=600,
+                    title="Land Cover Classification Results"
+                )
+                fig.update_layout(mapbox_style="open-street-map")
+                st.plotly_chart(fig, use_container_width=True)
         
         with tab3:
-            # Multi-year summary
-            summary_data = []
-            for year in years:
-                df = st.session_state.classified_data[year]
-                class_dist = df['predicted_class'].value_counts(normalize=True)
-                summary = {'Year': year, 'Total_Pixels': len(df)}
-                for class_name in class_dist.index:
-                    summary[class_name] = class_dist[class_name] * 100
-                summary_data.append(summary)
-            
-            summary_df = pd.DataFrame(summary_data).round(2)
-            st.dataframe(summary_df)
+            fig, ax = plt.subplots(figsize=(10, 6))
+            sns.boxplot(data=df, x='predicted_class', y='prediction_confidence', ax=ax)
+            ax.set_title('Prediction Confidence by Class')
+            ax.set_xlabel('Land Cover Class')
+            ax.set_ylabel('Prediction Confidence')
+            plt.xticks(rotation=45)
+            st.pyplot(fig)
 
-# ... (rest of your code remains similar) ...
+elif current_step == 7:  # Downloads
+    st.markdown("""
+    <div class="feature-card">
+        <h3>⬇️ Export Your Results</h3>
+        <p>Download processed data, trained models, and analysis results in various formats.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Check available data
+    available_data = []
+    if st.session_state.df is not None:
+        available_data.append("Training Data (CSV)")
+    if st.session_state.feature_data is not None:
+        available_data.append("Extracted Features (CSV)")
+    if st.session_state.classified_data is not None:
+        available_data.append("Classification Results (CSV)")
+    if st.session_state.gdf is not None:
+        available_data.append("Area of Interest (GeoJSON)")
+    if st.session_state.trained_model is not None:
+        available_data.append("Trained Model (Joblib)")
+    
+    if not available_data:
+        st.markdown('<div class="warning-message">⚠️ No data available for download. Please process some data first.</div>', unsafe_allow_html=True)
+    else:
+        download_option = st.selectbox("Select data to download:", available_data)
+        
+        if download_option == "Classification Results (CSV)" and st.session_state.classified_data is not None:
+            csv = st.session_state.classified_data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Classification Results",
+                data=csv,
+                file_name="classification_results.csv",
+                mime="text/csv",
+                type="primary"
+            )
+        
+        # Add other download options as needed...
+
+# Navigation arrows
+render_navigation_arrows(current_step, len(STEPS))
