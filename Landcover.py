@@ -61,12 +61,12 @@ if 'new_classification_results' not in st.session_state:
 if 'current_step' not in st.session_state:
     st.session_state.current_step = 0
 
-    # --- Dark Mode Professional Styling ---
+# --- Dark Mode Professional Styling ---
 st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
+
     /* Global Dark Mode Styling */
     .main {
         background: linear-gradient(135deg, #0a0e27 0%, #1a1d3a 50%, #2d1b69 100%);
@@ -74,7 +74,7 @@ st.markdown(
         font-family: 'Inter', sans-serif;
         color: #ffffff;
     }
-    
+
     .block-container {
         padding: 2rem 1rem;
         max-width: 1200px;
@@ -85,7 +85,7 @@ st.markdown(
         margin-top: 2rem;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     /* Sidebar Dark Styling */
     .sidebar .sidebar-content {
         background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
@@ -94,7 +94,7 @@ st.markdown(
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     /* Navigation Steps */
     .nav-step {
         display: flex;
@@ -109,20 +109,20 @@ st.markdown(
         text-decoration: none;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     .nav-step:hover {
         background: rgba(255, 255, 255, 0.1);
         transform: translateX(5px);
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         border-color: rgba(102, 126, 234, 0.5);
     }
-    
+
     .nav-step.active {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         border-color: rgba(102, 126, 234, 0.8);
     }
-    
+
     .nav-step-number {
         background: rgba(255, 255, 255, 0.15);
         border-radius: 50%;
@@ -136,7 +136,7 @@ st.markdown(
         font-size: 14px;
         color: #ffffff;
     }
-    
+
     /* Navigation Arrows */
     .nav-arrows {
         display: flex;
@@ -144,7 +144,7 @@ st.markdown(
         margin: 3rem 0 2rem 0;
         padding: 0 2rem;
     }
-    
+
     .nav-arrow {
         display: flex;
         align-items: center;
@@ -160,23 +160,23 @@ st.markdown(
         cursor: pointer;
         font-size: 16px;
     }
-    
+
     .nav-arrow:hover {
         transform: translateY(-3px);
         box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5);
     }
-    
+
     .nav-arrow.disabled {
         background: #4a5568;
         cursor: not-allowed;
         box-shadow: none;
         color: #a0a0a0;
     }
-    
+
     .nav-arrow.disabled:hover {
         transform: none;
     }
-    
+
     /* Progress Bar */
     .progress-container {
         background: rgba(255, 255, 255, 0.1);
@@ -185,14 +185,14 @@ st.markdown(
         margin: 2rem 0;
         overflow: hidden;
     }
-    
+
     .progress-bar {
         height: 100%;
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         border-radius: 10px;
         transition: width 0.5s ease;
     }
-    
+
     /* Cards and Containers - Dark Mode */
     .feature-card {
         background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(51, 65, 85, 0.8) 100%);
@@ -205,13 +205,13 @@ st.markdown(
         transition: transform 0.3s ease, box-shadow 0.3s ease;
         color: #ffffff;
     }
-    
+
     .feature-card:hover {
         transform: translateY(-5px);
         box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
         border-color: rgba(102, 126, 234, 0.3);
     }
-    
+
     .metric-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -222,26 +222,26 @@ st.markdown(
         margin: 1rem 0;
         transition: transform 0.3s ease;
     }
-    
+
     .metric-card:hover {
         transform: scale(1.05);
         box-shadow: 0 25px 50px rgba(102, 126, 234, 0.4);
     }
-    
+
     .metric-number {
         font-size: 2.5rem;
         font-weight: 700;
         margin: 0;
         color: #ffffff;
     }
-    
+
     .metric-label {
         font-size: 1rem;
         opacity: 0.9;
         margin-top: 0.5rem;
         color: #ffffff;
     }
-    
+
     /* Buttons - Dark Mode */
     .stButton > button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -254,12 +254,12 @@ st.markdown(
         transition: all 0.3s ease;
         box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
     }
-    
+
     .stButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5);
     }
-    
+
     /* File Uploader - Dark Mode */
     .stFileUploader {
         border: 2px dashed #667eea;
@@ -270,19 +270,19 @@ st.markdown(
         transition: all 0.3s ease;
         color: #ffffff;
     }
-    
+
     .stFileUploader:hover {
         border-color: #764ba2;
         background: rgba(51, 65, 85, 0.7);
     }
-    
+
     /* Headers - Dark Mode */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'Inter', sans-serif;
         color: #ffffff;
         font-weight: 700;
     }
-    
+
     h1 {
         font-size: 3rem;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -291,19 +291,19 @@ st.markdown(
         background-clip: text;
         margin-bottom: 0.5rem;
     }
-    
+
     .subtitle {
         font-size: 1.2rem;
-        color: #cbd5e1;
+        color: #bdc3c7;
         margin-bottom: 3rem;
         text-align: center;
     }
-    
+
     /* Text Elements - Dark Mode */
     p, span, div, label {
         color: #ffffff;
     }
-    
+
     /* Status Messages - Dark Mode */
     .success-message {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -313,7 +313,7 @@ st.markdown(
         margin: 1rem 0;
         box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
     }
-    
+
     .error-message {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         color: white;
@@ -322,7 +322,7 @@ st.markdown(
         margin: 1rem 0;
         box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
     }
-    
+
     .warning-message {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         color: white;
@@ -331,7 +331,7 @@ st.markdown(
         margin: 1rem 0;
         box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
     }
-    
+
     .info-message {
         background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
         color: white;
@@ -340,56 +340,56 @@ st.markdown(
         margin: 1rem 0;
         box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
     }
-    
+
     /* Step Header - Dark Mode */
     .step-header {
         text-align: center;
         margin-bottom: 3rem;
     }
-    
+
     .step-title {
         font-size: 2.5rem;
         font-weight: 700;
         color: #ffffff;
         margin-bottom: 1rem;
     }
-    
+
     .step-description {
         font-size: 1.1rem;
         color: #cbd5e1;
         max-width: 600px;
         margin: 0 auto;
     }
-    
+
     /* Streamlit Elements - Dark Mode */
     .stSelectbox > div > div > div {
         background-color: rgba(30, 41, 59, 0.9);
         color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.2);
     }
-    
+
     .stTextInput > div > div > input {
         background-color: rgba(30, 41, 59, 0.9);
         color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.2);
     }
-    
+
     .stTextArea > div > div > textarea {
         background-color: rgba(30, 41, 59, 0.9);
         color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.2);
     }
-    
+
     .stDateInput > div > div > input {
         background-color: rgba(30, 41, 59, 0.9);
         color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.2);
     }
-    
+
     .stSlider > div > div > div {
         color: #ffffff;
     }
-    
+
     .stRadio > div {
         background-color: rgba(30, 41, 59, 0.5);
         color: #ffffff;
@@ -397,65 +397,65 @@ st.markdown(
         padding: 1rem;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     .stMultiSelect > div > div {
         background-color: rgba(30, 41, 59, 0.9);
         color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.2);
     }
-    
+
     /* DataFrames - Dark Mode */
     .stDataFrame {
         background-color: rgba(30, 41, 59, 0.9);
         color: #ffffff;
         border-radius: 10px;
     }
-    
+
     /* Expander - Dark Mode */
     .streamlit-expanderHeader {
         background-color: rgba(30, 41, 59, 0.9);
         color: #ffffff;
     }
-    
+
     .streamlit-expanderContent {
         background-color: rgba(30, 41, 59, 0.7);
         color: #ffffff;
     }
-    
+
     /* Tabs - Dark Mode */
     .stTabs > div > div > div > div {
         background-color: rgba(30, 41, 59, 0.9);
         color: #ffffff;
     }
-    
+
     /* Desktop Optimization (1200px+) */
     @media (min-width: 1200px) {
         .block-container {
             max-width: 1400px;
             padding: 3rem 2rem;
         }
-        
+
         .feature-card {
             padding: 3rem;
         }
-        
+
         .nav-arrows {
             padding: 0 3rem;
         }
-        
+
         h1 {
             font-size: 3.5rem;
         }
-        
+
         .metric-card {
             padding: 2.5rem;
         }
-        
+
         .metric-number {
             font-size: 3rem;
         }
     }
-    
+
     /* Laptop/Tablet Landscape (768px - 1199px) */
     @media (min-width: 768px) and (max-width: 1199px) {
         .block-container {
@@ -463,93 +463,93 @@ st.markdown(
             margin: 1.5rem;
             padding: 2rem 1.5rem;
         }
-        
+
         .feature-card {
             padding: 2rem;
         }
-        
+
         .nav-arrows {
             padding: 0 2rem;
         }
-        
+
         h1 {
             font-size: 2.8rem;
         }
-        
+
         .metric-number {
             font-size: 2.2rem;
         }
-        
+
         .metric-card {
             padding: 1.8rem;
         }
-        
+
         /* Adjust sidebar for tablets */
         .sidebar .sidebar-content {
             padding: 1.5rem;
         }
     }
-    
+
     /* Mobile Portrait and Small Tablets (max-width: 767px) */
     @media (max-width: 767px) {
         .main {
             padding: 0;
         }
-        
+
         .block-container {
             margin: 0.5rem;
             padding: 1.5rem 1rem;
             border-radius: 15px;
             max-width: calc(100vw - 1rem);
         }
-        
+
         /* Mobile Header */
         h1 {
             font-size: 2rem;
             line-height: 1.2;
         }
-        
+
         .subtitle {
             font-size: 1rem;
             margin-bottom: 2rem;
             padding: 0 0.5rem;
         }
-        
+
         .step-header {
             margin-bottom: 2rem;
         }
-        
+
         .step-title {
             font-size: 1.8rem;
             line-height: 1.3;
         }
-        
+
         .step-description {
             font-size: 1rem;
             padding: 0 1rem;
         }
-        
+
         /* Mobile Cards */
         .feature-card {
             padding: 1.5rem 1rem;
             margin: 0.8rem 0;
             border-radius: 15px;
         }
-        
+
         .metric-card {
             padding: 1.5rem 1rem;
             margin: 0.8rem 0;
             border-radius: 15px;
         }
-        
+
         .metric-number {
             font-size: 2rem;
         }
-        
+
         .metric-label {
             font-size: 0.9rem;
         }
-        
+
         /* Mobile Navigation */
         .nav-arrows {
             flex-direction: column;
@@ -557,40 +557,40 @@ st.markdown(
             padding: 0 1rem;
             margin: 2rem 0 1.5rem 0;
         }
-        
+
         .nav-arrow {
             width: 100%;
             justify-content: center;
             padding: 12px 20px;
             font-size: 14px;
         }
-        
+
         /* Mobile Progress */
         .progress-container {
             margin: 1.5rem 0;
             height: 6px;
         }
-        
+
         /* Mobile Sidebar */
         .sidebar .sidebar-content {
             padding: 1rem;
             border-radius: 10px;
         }
-        
+
         .nav-step {
             padding: 8px 12px;
             margin: 6px 0;
             border-radius: 10px;
             font-size: 14px;
         }
-        
+
         .nav-step-number {
             width: 25px;
             height: 25px;
             margin-right: 10px;
             font-size: 12px;
         }
-        
+
         /* Mobile Forms */
         .stButton > button {
             width: 100%;
@@ -598,13 +598,13 @@ st.markdown(
             font-size: 14px;
             margin: 0.5rem 0;
         }
-        
+
         .stFileUploader {
             padding: 1.5rem 1rem;
             border-radius: 15px;
             font-size: 14px;
         }
-        
+
         .stSelectbox > div > div > div,
         .stTextInput > div > div > input,
         .stTextArea > div > div > textarea,
@@ -612,7 +612,7 @@ st.markdown(
             font-size: 14px;
             padding: 8px 12px;
         }
-        
+
         /* Mobile Status Messages */
         .success-message, .error-message, .warning-message, .info-message {
             padding: 1rem;
@@ -620,82 +620,82 @@ st.markdown(
             margin: 0.8rem 0;
             font-size: 14px;
         }
-        
+
         /* Mobile Columns - Stack on mobile */
         .stColumns > div {
             min-width: 100% !important;
             margin-bottom: 1rem;
         }
-        
+
         /* Mobile Charts and Maps */
         .plotly-graph-div {
             border-radius: 10px;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
         }
-        
+
         /* Hide complex elements on very small screens */
         @media (max-width: 480px) {
             .feature-card h3 {
                 font-size: 1.2rem;
             }
-            
+
             .feature-card p {
                 font-size: 0.9rem;
                 line-height: 1.4;
             }
-            
+
             .metric-number {
                 font-size: 1.8rem;
             }
-            
+
             h1 {
                 font-size: 1.8rem;
             }
-            
+
             .step-title {
                 font-size: 1.5rem;
             }
         }
     }
-    
+
     /* Landscape Mobile (orientation specific) */
     @media (max-width: 767px) and (orientation: landscape) {
         .block-container {
             margin: 0.5rem;
             padding: 1rem;
         }
-        
+
         .step-header {
             margin-bottom: 1.5rem;
         }
-        
+
         .nav-arrows {
             flex-direction: row;
             margin: 1.5rem 0;
         }
-        
+
         .nav-arrow {
             width: auto;
             flex: 1;
             margin: 0 0.5rem;
         }
     }
-    
+
     /* Touch-friendly interactions */
     @media (hover: none) and (pointer: coarse) {
         .nav-step, .nav-arrow, .stButton > button {
             min-height: 44px;
         }
-        
+
         .feature-card:hover {
             transform: none;
         }
-        
+
         .metric-card:hover {
             transform: none;
         }
     }
-    
+
     /* High DPI displays */
     @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
         .feature-card, .metric-card {
@@ -749,7 +749,7 @@ def authenticate_with_json_key(json_key_content):
             credentials_dict = json.loads(json_key_content)
         else:
             credentials_dict = json_key_content
-            
+
         from google.oauth2 import service_account
         credentials = service_account.Credentials.from_service_account_info(
             credentials_dict,
@@ -775,20 +775,20 @@ def get_step_completion_status():
 def render_navigation_arrows(current_step, total_steps):
     """Render navigation arrows"""
     status = get_step_completion_status()
-    
+
     # Calculate progress percentage
     progress = (current_step / (total_steps - 1)) * 100
-    
+
     # Render progress bar
     st.markdown(f"""
     <div class="progress-container">
         <div class="progress-bar" style="width: {progress}%;"></div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     # Render navigation arrows
     col1, col2, col3 = st.columns([1, 2, 1])
-    
+
     with col1:
         if current_step > 0:
             if st.button("← Previous Step", key="prev_btn", help="Go to previous step"):
@@ -796,10 +796,10 @@ def render_navigation_arrows(current_step, total_steps):
                 st.rerun()
         else:
             st.markdown('<div class="nav-arrow disabled">← Previous Step</div>', unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown(f"<div style='text-align: center; padding: 15px; font-weight: 600; color: #2c3e50;'>Step {current_step + 1} of {total_steps}</div>", unsafe_allow_html=True)
-    
+
     with col3:
         # Check if current step is completed to enable next button
         can_proceed = True
@@ -817,7 +817,7 @@ def render_navigation_arrows(current_step, total_steps):
             can_proceed = status['classification_done']
         elif current_step == 6:  # Results
             can_proceed = True
-        
+
         if current_step < total_steps - 1:
             if can_proceed:
                 if st.button("Next Step →", key="next_btn", help="Go to next step"):
@@ -864,7 +864,7 @@ for i, step in enumerate(STEPS):
     # Check if step is completed
     is_completed = False
     is_active = i == st.session_state.current_step
-    
+
     if i == 0:  # Welcome
         is_completed = True
     elif i == 1:  # Data Upload
@@ -881,11 +881,11 @@ for i, step in enumerate(STEPS):
         is_completed = status['classification_done']
     elif i == 7:  # Downloads
         is_completed = True
-    
+
     # Create navigation item
     active_class = "active" if is_active else ""
     status_icon = "✅" if is_completed else "⏳" if i <= st.session_state.current_step else "⚪"
-    
+
     if st.sidebar.button(f"{status_icon} {step['title']}", key=f"nav_{i}", help=step['description']):
         st.session_state.current_step = i
         st.rerun()
@@ -912,10 +912,10 @@ if current_step == 0:  # Welcome
         </p>
     </div>
     """, unsafe_allow_html=True)
-    
+
     # Feature cards
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.markdown("""
         <div class="feature-card" style="text-align: center;">
@@ -924,7 +924,7 @@ if current_step == 0:  # Welcome
             <p>Access Sentinel-2 imagery directly from Google Earth Engine with advanced cloud masking and spectral indices calculation.</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown("""
         <div class="feature-card" style="text-align: center;">
@@ -933,7 +933,7 @@ if current_step == 0:  # Welcome
             <p>Train state-of-the-art Random Forest models for accurate land cover classification with comprehensive accuracy metrics.</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col3:
         st.markdown("""
         <div class="feature-card" style="text-align: center;">
@@ -942,7 +942,7 @@ if current_step == 0:  # Welcome
             <p>Interactive visualizations, spatial analysis, and professional reporting tools for comprehensive land cover insights.</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     # Process overview
     st.markdown("""
     <div class="feature-card">
@@ -974,7 +974,7 @@ if current_step == 0:  # Welcome
 
 elif current_step == 1:  # Data Upload
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("""
         <div class="feature-card">
@@ -982,15 +982,17 @@ elif current_step == 1:  # Data Upload
             <p>Upload your training data containing spectral features and land cover labels.</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         uploaded_file = st.file_uploader("Choose CSV file", type=["csv"], key="csv_upload")
         if uploaded_file is not None:
             try:
                 df = pd.read_csv(uploaded_file)
+                # Add source column
+                df['source'] = 'Uploaded_CSV'
                 st.session_state.df = df
-                
+
                 st.markdown('<div class="success-message">✅ CSV loaded successfully!</div>', unsafe_allow_html=True)
-                
+
                 # Dataset metrics
                 col_a, col_b, col_c = st.columns(3)
                 with col_a:
@@ -1008,13 +1010,13 @@ elif current_step == 1:  # Data Upload
                         <div class="metric-number">{df.memory_usage(deep=True).sum() // 1024}KB</div>
                         <div class="metric-label">Size</div>
                     </div>""", unsafe_allow_html=True)
-                
+
                 with st.expander("📋 Dataset Preview"):
                     st.write(df.head())
-                    
+
             except Exception as e:
                 st.markdown(f'<div class="error-message">❌ Error loading CSV: {e}</div>', unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown("""
         <div class="feature-card">
@@ -1022,7 +1024,7 @@ elif current_step == 1:  # Data Upload
             <p>Upload your study area boundary as a GeoJSON file.</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         geojson_file = st.file_uploader("Choose GeoJSON file", type=["geojson"], key="geojson_upload")
         if geojson_file is not None:
             try:
@@ -1030,9 +1032,9 @@ elif current_step == 1:  # Data Upload
                 if gdf.crs is None or gdf.crs.to_string() != "EPSG:4326":
                     gdf = gdf.to_crs("EPSG:4326")
                 st.session_state.gdf = gdf
-                
+
                 st.markdown('<div class="success-message">✅ GeoJSON loaded successfully!</div>', unsafe_allow_html=True)
-                
+
                 # AOI metrics
                 col_a, col_b = st.columns(2)
                 with col_a:
@@ -1046,7 +1048,7 @@ elif current_step == 1:  # Data Upload
                         <div class="metric-number">{area:.4f}</div>
                         <div class="metric-label">Area (deg²)</div>
                     </div>""", unsafe_allow_html=True)
-                
+
                 # Interactive map
                 center = [gdf.geometry.centroid.y.mean(), gdf.geometry.centroid.x.mean()]
                 m = folium.Map(location=center, zoom_start=12, tiles="OpenStreetMap")
@@ -1060,7 +1062,7 @@ elif current_step == 1:  # Data Upload
                     }
                 ).add_to(m)
                 st_folium(m, width=700, height=400)
-                
+
             except Exception as e:
                 st.markdown(f'<div class="error-message">❌ Error loading GeoJSON: {e}</div>', unsafe_allow_html=True)
 
@@ -1078,26 +1080,26 @@ elif current_step == 2:  # Satellite Data
                 <p>Please authenticate with Google Earth Engine to access satellite imagery.</p>
             </div>
             """, unsafe_allow_html=True)
-            
+
             auth_method = st.radio(
                 "Choose authentication method:",
                 ["JSON Service Account Key", "Interactive Token", "Manual Terminal"],
                 horizontal=True
             )
-            
+
             if auth_method == "JSON Service Account Key":
                 st.markdown("""
                 <div class="info-message">
                 <p>Upload your Google Earth Engine service account JSON key file from the Google Cloud Console.</p>
                 </div>
                 """, unsafe_allow_html=True)
-                
+
                 col1, col2 = st.columns(2)
                 with col1:
                     json_key_file = st.file_uploader("Upload JSON Key File", type=["json"], key="json_file_uploader")
                 with col2:
                     json_key_text = st.text_area("Or paste JSON content", placeholder='{"type": "service_account", ...}', height=150)
-                
+
                 if st.button("🔑 Authenticate with JSON Key", type="primary"):
                     json_content = None
                     if json_key_file is not None:
@@ -1110,7 +1112,7 @@ elif current_step == 2:  # Satellite Data
                             json_content = json.loads(json_key_text.strip())
                         except Exception as e:
                             st.markdown(f'<div class="error-message">❌ Error parsing JSON: {e}</div>', unsafe_allow_html=True)
-                    
+
                     if json_content:
                         with st.spinner("🔄 Authenticating..."):
                             success, message = authenticate_with_json_key(json_content)
@@ -1119,7 +1121,7 @@ elif current_step == 2:  # Satellite Data
                             st.rerun()
                         else:
                             st.markdown(f'<div class="error-message">❌ {message}</div>', unsafe_allow_html=True)
-        
+
         # Only show download options if authenticated and AOI is available
         if st.session_state.ee_authenticated:
             if st.session_state.gdf is None:
@@ -1131,7 +1133,7 @@ elif current_step == 2:  # Satellite Data
                     <p>Configure parameters for Sentinel-2 imagery download from Google Earth Engine.</p>
                 </div>
                 """, unsafe_allow_html=True)
-                
+
                 col1, col2 = st.columns(2)
                 with col1:
                     start_date = st.date_input("Start Date", value=date(2023, 1, 1))
@@ -1139,40 +1141,40 @@ elif current_step == 2:  # Satellite Data
                 with col2:
                     end_date = st.date_input("End Date", value=date(2023, 12, 31))
                     resolution = st.selectbox("Spatial Resolution (m)", [10, 20, 60], index=0)
-                
+
                 if st.button("🛰️ Download Sentinel-2 Data", type="primary"):
                     try:
                         with st.spinner("🔄 Processing satellite data..."):
                             # Convert GeoDataFrame to Earth Engine geometry
                             geom_json = json.loads(st.session_state.gdf.to_json())
                             ee_geom = ee.Geometry(geom_json['features'][0]['geometry'])
-                            
+
                             # Create image collection
                             collection = ee.ImageCollection('COPERNICUS/S2_SR') \
                                 .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
                                 .filterBounds(ee_geom) \
                                 .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
-                            
+
                             common_bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12', 'SCL']
                             collection = collection.map(lambda image: image.select(common_bands))
-                            
+
                             size = collection.size()
                             if size.getInfo() == 0:
                                 st.markdown('<div class="error-message">❌ No images found. Try adjusting the date range or cloud cover threshold.</div>', unsafe_allow_html=True)
                             else:
                                 st.markdown(f'<div class="success-message">✅ Found {size.getInfo()} images</div>', unsafe_allow_html=True)
-                                
+
                                 # Create median composite
                                 image = collection.map(mask_clouds).median().clip(ee_geom)
                                 image = calculate_ndvi(image)
                                 image = calculate_ndwi(image)
-                                
+
                                 st.session_state.ee_image = image
-                                
+
                                 # Extract features
                                 features = image.sample(region=ee_geom, scale=10, numPixels=1000, geometries=True)
                                 feature_info = features.getInfo()
-                                
+
                                 if feature_info and 'features' in feature_info:
                                     feature_data = []
                                     for feature in feature_info['features']:
@@ -1181,11 +1183,13 @@ elif current_step == 2:  # Satellite Data
                                             coords = feature['geometry']['coordinates']
                                             props['longitude'] = coords[0]
                                             props['latitude'] = coords[1]
+                                        # Add source column
+                                        props['source'] = 'Sentinel-2'
                                         feature_data.append(props)
-                                    
+
                                     feature_df = pd.DataFrame(feature_data)
                                     st.session_state.feature_data = feature_df
-                                    
+
                                     # Display success metrics
                                     col1, col2, col3 = st.columns(3)
                                     with col1:
@@ -1207,14 +1211,14 @@ elif current_step == 2:  # Satellite Data
                                                 <div class="metric-number">{avg_ndwi:.3f}</div>
                                                 <div class="metric-label">Avg NDWI</div>
                                             </div>""", unsafe_allow_html=True)
-                                    
+
                                     # Image preview
                                     st.markdown("""
                                     <div class="feature-card">
                                         <h3>📷 Image Preview</h3>
                                     </div>
                                     """, unsafe_allow_html=True)
-                                    
+
                                     vis_params = {'bands': ['B4', 'B3', 'B2'], 'min': 0.05, 'max': 0.3, 'gamma': 1.4}
                                     url = image.select(['B4', 'B3', 'B2']).getThumbURL({
                                         'dimensions': 800,
@@ -1223,89 +1227,92 @@ elif current_step == 2:  # Satellite Data
                                         **vis_params
                                     })
                                     st.image(url, caption="Sentinel-2 RGB Composite", use_container_width=True)
-                                    
+
                     except Exception as e:
                         st.markdown(f'<div class="error-message">❌ Error downloading satellite data: {e}</div>', unsafe_allow_html=True)
 
 elif current_step == 3:  # Visualization
     if st.session_state.feature_data is not None:
         df = st.session_state.feature_data
-        
+
+        # Filter for Sentinel-2 data
+        sentinel_df = df[df['source'] == 'Sentinel-2']
+
         # Overview metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.markdown(f"""<div class="metric-card">
-                <div class="metric-number">{len(df)}</div>
-                <div class="metric-label">Total Pixels</div>
+                <div class="metric-number">{len(sentinel_df)}</div>
+                <div class="metric-label">Sentinel-2 Pixels</div>
             </div>""", unsafe_allow_html=True)
         with col2:
-            if 'NDVI' in df.columns:
+            if 'NDVI' in sentinel_df.columns:
                 st.markdown(f"""<div class="metric-card">
-                    <div class="metric-number">{df['NDVI'].mean():.3f}</div>
+                    <div class="metric-number">{sentinel_df['NDVI'].mean():.3f}</div>
                     <div class="metric-label">Avg NDVI</div>
                 </div>""", unsafe_allow_html=True)
         with col3:
-            if 'NDWI' in df.columns:
+            if 'NDWI' in sentinel_df.columns:
                 st.markdown(f"""<div class="metric-card">
-                    <div class="metric-number">{df['NDWI'].mean():.3f}</div>
+                    <div class="metric-number">{sentinel_df['NDWI'].mean():.3f}</div>
                     <div class="metric-label">Avg NDWI</div>
                 </div>""", unsafe_allow_html=True)
         with col4:
-            if 'B2' in df.columns:
+            if 'B2' in sentinel_df.columns:
                 st.markdown(f"""<div class="metric-card">
-                    <div class="metric-number">{df['B2'].mean():.3f}</div>
+                    <div class="metric-number">{sentinel_df['B2'].mean():.3f}</div>
                     <div class="metric-label">Avg Blue Band</div>
                 </div>""", unsafe_allow_html=True)
-        
+
         # Visualization tabs
         tab1, tab2, tab3 = st.tabs(["📊 Distributions", "🔗 Correlations", "🗺️ Spatial Analysis"])
-        
+
         with tab1:
             col1, col2 = st.columns(2)
             with col1:
-                if 'NDVI' in df.columns:
+                if 'NDVI' in sentinel_df.columns:
                     fig, ax = plt.subplots(figsize=(10, 6))
-                    ax.hist(df['NDVI'].dropna(), bins=50, alpha=0.7, color='#667eea')
+                    ax.hist(sentinel_df['NDVI'].dropna(), bins=50, alpha=0.7, color='#667eea')
                     ax.set_xlabel('NDVI')
                     ax.set_ylabel('Frequency')
-                    ax.set_title('NDVI Distribution')
+                    ax.set_title('NDVI Distribution (Sentinel-2)')
                     ax.grid(True, alpha=0.3)
                     st.pyplot(fig)
             with col2:
-                if 'NDWI' in df.columns:
+                if 'NDWI' in sentinel_df.columns:
                     fig, ax = plt.subplots(figsize=(10, 6))
-                    ax.hist(df['NDWI'].dropna(), bins=50, alpha=0.7, color='#764ba2')
+                    ax.hist(sentinel_df['NDWI'].dropna(), bins=50, alpha=0.7, color='#764ba2')
                     ax.set_xlabel('NDWI')
                     ax.set_ylabel('Frequency')
-                    ax.set_title('NDWI Distribution')
+                    ax.set_title('NDWI Distribution (Sentinel-2)')
                     ax.grid(True, alpha=0.3)
                     st.pyplot(fig)
-        
+
         with tab2:
-            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            numeric_cols = sentinel_df.select_dtypes(include=[np.number]).columns
             if len(numeric_cols) > 1:
                 fig, ax = plt.subplots(figsize=(12, 8))
-                correlation_matrix = df[numeric_cols].corr()
+                correlation_matrix = sentinel_df[numeric_cols].corr()
                 sns.heatmap(correlation_matrix, annot=True, cmap='RdYlBu_r', center=0, ax=ax)
-                ax.set_title('Feature Correlation Matrix')
+                ax.set_title('Feature Correlation Matrix (Sentinel-2)')
                 st.pyplot(fig)
-        
+
         with tab3:
-            if 'longitude' in df.columns and 'latitude' in df.columns:
-                if 'NDVI' in df.columns:
+            if 'longitude' in sentinel_df.columns and 'latitude' in sentinel_df.columns:
+                if 'NDVI' in sentinel_df.columns:
                     fig = px.scatter_mapbox(
-                        df.sample(min(1000, len(df))),
+                        sentinel_df.sample(min(1000, len(sentinel_df))),
                         lat='latitude',
                         lon='longitude',
                         color='NDVI',
                         zoom=10,
                         height=600,
-                        title="NDVI Spatial Distribution",
+                        title="NDVI Spatial Distribution (Sentinel-2)",
                         color_continuous_scale='RdYlGn'
                     )
                     fig.update_layout(mapbox_style="open-street-map")
                     st.plotly_chart(fig, use_container_width=True)
-    
+
     else:
         st.markdown('<div class="info-message">📥 Please download satellite data first to generate visualizations.</div>', unsafe_allow_html=True)
 
@@ -1315,11 +1322,13 @@ elif current_step == 4:  # Model Training
     else:
         # Data source selection
         data_source = st.radio("Select training data source:", ["Uploaded CSV", "Extracted Satellite Features"], horizontal=True)
-        
+
         if data_source == "Uploaded CSV" and st.session_state.df is not None:
             df = st.session_state.df.copy()
         elif data_source == "Extracted Satellite Features" and st.session_state.feature_data is not None:
             df = st.session_state.feature_data.copy()
+            # Filter for Sentinel-2 data
+            df = df[df['source'] == 'Sentinel-2']
             # Create synthetic labels
             if 'NDVI' in df.columns and 'NDWI' in df.columns:
                 def classify_pixel(row):
@@ -1331,26 +1340,26 @@ elif current_step == 4:  # Model Training
                     else: return 'Bare_Soil'
                 df['land_cover'] = df.apply(classify_pixel, axis=1)
                 st.markdown('<div class="info-message">🏷️ Synthetic labels created based on spectral indices</div>', unsafe_allow_html=True)
-        
+
         # Training configuration
         st.markdown("""
         <div class="feature-card">
             <h3>🎯 Model Configuration</h3>
         </div>
         """, unsafe_allow_html=True)
-        
+
         col1, col2 = st.columns(2)
         with col1:
             potential_targets = [col for col in df.columns if df[col].dtype == 'object' or 'class' in col.lower()]
             target_col = st.selectbox("Target column:", potential_targets)
             if target_col:
                 st.info(f"Classes: {list(df[target_col].unique())}")
-        
+
         with col2:
             numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
             feature_cols = st.multiselect("Feature columns:", numeric_cols, default=numeric_cols[:5])
             test_size = st.slider("Test set size (%)", 10, 40, 20) / 100
-        
+
         if st.button("🚀 Train Model", type="primary"):
             if not feature_cols or not target_col:
                 st.markdown('<div class="error-message">❌ Please select feature and target columns</div>', unsafe_allow_html=True)
@@ -1360,29 +1369,29 @@ elif current_step == 4:  # Model Training
                         # Prepare data
                         X = df[feature_cols].fillna(0)
                         y = df[target_col]
-                        
+
                         # Encode labels
                         le = LabelEncoder()
                         y_encoded = le.fit_transform(y)
-                        
+
                         # Split data
                         X_train, X_test, y_train, y_test = train_test_split(
                             X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
                         )
-                        
+
                         # Scale features
                         scaler = StandardScaler()
                         X_train_scaled = scaler.fit_transform(X_train)
                         X_test_scaled = scaler.transform(X_test)
-                        
+
                         # Train model
                         rf_model = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
                         rf_model.fit(X_train_scaled, y_train)
-                        
+
                         # Predictions
                         y_pred = rf_model.predict(X_test_scaled)
                         accuracy = accuracy_score(y_test, y_pred)
-                        
+
                         # Store model
                         st.session_state.trained_model = {
                             'model': rf_model,
@@ -1391,9 +1400,9 @@ elif current_step == 4:  # Model Training
                             'feature_cols': feature_cols,
                             'accuracy': accuracy
                         }
-                        
+
                         st.markdown(f'<div class="success-message">✅ Model trained successfully! Accuracy: {accuracy:.3f}</div>', unsafe_allow_html=True)
-                        
+
                         # Results display
                         col1, col2 = st.columns(2)
                         with col1:
@@ -1405,7 +1414,7 @@ elif current_step == 4:  # Model Training
                             report = classification_report(y_test, y_pred, target_names=le.classes_, output_dict=True)
                             report_df = pd.DataFrame(report).transpose()
                             st.dataframe(report_df.round(3))
-                        
+
                         with col2:
                             st.markdown("""
                             <div class="feature-card">
@@ -1414,12 +1423,12 @@ elif current_step == 4:  # Model Training
                             """, unsafe_allow_html=True)
                             cm = confusion_matrix(y_test, y_pred)
                             fig, ax = plt.subplots(figsize=(8, 6))
-                            sns.heatmap(cm, annot=True, fmt='d', xticklabels=le.classes_, 
+                            sns.heatmap(cm, annot=True, fmt='d', xticklabels=le.classes_,
                                        yticklabels=le.classes_, cmap='Blues', ax=ax)
                             ax.set_ylabel('True Label')
                             ax.set_xlabel('Predicted Label')
                             st.pyplot(fig)
-                        
+
                         # Feature importance
                         st.markdown("""
                         <div class="feature-card">
@@ -1430,12 +1439,12 @@ elif current_step == 4:  # Model Training
                             'Feature': feature_cols,
                             'Importance': rf_model.feature_importances_
                         }).sort_values('Importance', ascending=False)
-                        
+
                         fig, ax = plt.subplots(figsize=(10, 6))
                         sns.barplot(data=importance_df, x='Importance', y='Feature', ax=ax, palette='viridis')
                         ax.set_title('Feature Importance')
                         st.pyplot(fig)
-                        
+
                 except Exception as e:
                     st.markdown(f'<div class="error-message">❌ Error training model: {e}</div>', unsafe_allow_html=True)
 
@@ -1447,39 +1456,41 @@ elif current_step == 5:  # Classification
     else:
         model_info = st.session_state.trained_model
         accuracy = model_info['accuracy']
-        
+
         st.markdown(f"""
         <div class="feature-card">
             <h3>🔮 Land Cover Classification</h3>
             <p>Apply trained model with accuracy: <strong>{accuracy:.3f}</strong></p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         if st.button("🚀 Classify Land Cover", type="primary"):
             try:
                 with st.spinner("🔄 Classifying land cover..."):
                     df = st.session_state.feature_data.copy()
-                    
+                    # Filter for Sentinel-2 data
+                    df = df[df['source'] == 'Sentinel-2']
+
                     # Prepare features
                     feature_cols = model_info['feature_cols']
                     X = df[feature_cols].fillna(0)
-                    
+
                     # Scale and predict
                     X_scaled = model_info['scaler'].transform(X)
                     predictions = model_info['model'].predict(X_scaled)
                     prediction_probs = model_info['model'].predict_proba(X_scaled)
-                    
+
                     # Decode labels
                     predicted_labels = model_info['label_encoder'].inverse_transform(predictions)
-                    
+
                     # Add predictions
                     df['predicted_class'] = predicted_labels
                     df['prediction_confidence'] = prediction_probs.max(axis=1)
-                    
+
                     st.session_state.classified_data = df
-                    
+
                     st.markdown('<div class="success-message">✅ Classification completed!</div>', unsafe_allow_html=True)
-                    
+
                     # Results metrics
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -1500,14 +1511,14 @@ elif current_step == 5:  # Classification
                             <div class="metric-number">{avg_confidence:.3f}</div>
                             <div class="metric-label">Avg Confidence</div>
                         </div>""", unsafe_allow_html=True)
-                    
+
                     # Class distribution
                     st.markdown("""
                     <div class="feature-card">
                         <h3>📊 Land Cover Distribution</h3>
                     </div>
                     """, unsafe_allow_html=True)
-                    
+
                     class_counts = df['predicted_class'].value_counts()
                     fig, ax = plt.subplots(figsize=(10, 6))
                     colors = plt.cm.Set3(np.linspace(0, 1, len(class_counts)))
@@ -1517,7 +1528,7 @@ elif current_step == 5:  # Classification
                     ax.set_ylabel('Number of Pixels')
                     plt.xticks(rotation=45)
                     st.pyplot(fig)
-                    
+
             except Exception as e:
                 st.markdown(f'<div class="error-message">❌ Error during classification: {e}</div>', unsafe_allow_html=True)
 
@@ -1526,7 +1537,7 @@ elif current_step == 6:  # Results
         st.markdown('<div class="warning-message">⚠️ Please complete the classification process first.</div>', unsafe_allow_html=True)
     else:
         df = st.session_state.classified_data
-        
+
         # Summary metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -1552,10 +1563,10 @@ elif current_step == 6:  # Results
                 <div class="metric-number">{pct:.1f}%</div>
                 <div class="metric-label">High Confidence</div>
             </div>""", unsafe_allow_html=True)
-        
+
         # Detailed analysis tabs
         tab1, tab2, tab3 = st.tabs(["📊 Statistics", "🗺️ Spatial View", "📈 Analysis"])
-        
+
         with tab1:
             class_stats = df.groupby('predicted_class').agg({
                 'prediction_confidence': ['count', 'mean', 'std'],
@@ -1563,7 +1574,7 @@ elif current_step == 6:  # Results
                 'NDWI': ['mean', 'std'] if 'NDWI' in df.columns else lambda x: None
             }).round(3)
             st.dataframe(class_stats)
-        
+
         with tab2:
             if 'longitude' in df.columns and 'latitude' in df.columns:
                 fig = px.scatter_mapbox(
@@ -1577,7 +1588,7 @@ elif current_step == 6:  # Results
                 )
                 fig.update_layout(mapbox_style="open-street-map")
                 st.plotly_chart(fig, use_container_width=True)
-        
+
         with tab3:
             fig, ax = plt.subplots(figsize=(10, 6))
             sns.boxplot(data=df, x='predicted_class', y='prediction_confidence', ax=ax)
@@ -1594,7 +1605,7 @@ elif current_step == 7:  # Downloads
         <p>Download processed data, trained models, and analysis results in various formats.</p>
     </div>
     """, unsafe_allow_html=True)
-    
+
     # Check available data
     available_data = []
     if st.session_state.df is not None:
@@ -1607,12 +1618,24 @@ elif current_step == 7:  # Downloads
         available_data.append("Area of Interest (GeoJSON)")
     if st.session_state.trained_model is not None:
         available_data.append("Trained Model (Joblib)")
-    
+
     if not available_data:
         st.markdown('<div class="warning-message">⚠️ No data available for download. Please process some data first.</div>', unsafe_allow_html=True)
     else:
         download_option = st.selectbox("Select data to download:", available_data)
-        
+
+        if download_option == "Extracted Features (CSV)" and st.session_state.feature_data is not None:
+            # Filter for Sentinel-2 data
+            sentinel_df = st.session_state.feature_data[st.session_state.feature_data['source'] == 'Sentinel-2']
+            csv = sentinel_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Sentinel-2 Features",
+                data=csv,
+                file_name="sentinel2_features.csv",
+                mime="text/csv",
+                type="primary"
+            )
+
         if download_option == "Classification Results (CSV)" and st.session_state.classified_data is not None:
             csv = st.session_state.classified_data.to_csv(index=False).encode('utf-8')
             st.download_button(
@@ -1622,8 +1645,6 @@ elif current_step == 7:  # Downloads
                 mime="text/csv",
                 type="primary"
             )
-        
-        # Add other download options as needed...
 
 # Navigation arrows
 render_navigation_arrows(current_step, len(STEPS))
