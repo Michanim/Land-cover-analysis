@@ -1136,10 +1136,10 @@ elif current_step == 2:  # Satellite Data
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    start_date = st.date_input("Start Date", value=date(2023, 1, 1))
+                    start_date = st.date_input("Start Date", value=date(2024, 1, 1))
                     cloud_cover = st.slider("Maximum Cloud Cover (%)", 0, 100, 20)
                 with col2:
-                    end_date = st.date_input("End Date", value=date(2023, 12, 31))
+                    end_date = st.date_input("End Date", value=date(2025, 12, 31))
                     resolution = st.selectbox("Spatial Resolution (m)", [10, 20, 60], index=0)
 
                 if st.button("🛰️ Download Sentinel-2 Data", type="primary"):
@@ -1183,8 +1183,9 @@ elif current_step == 2:  # Satellite Data
                                             coords = feature['geometry']['coordinates']
                                             props['longitude'] = coords[0]
                                             props['latitude'] = coords[1]
-                                        # Add source column
+                                        # Add source and year columns
                                         props['source'] = 'Sentinel-2'
+                                        props['year'] = start_date.year  # Assign the year of the start date
                                         feature_data.append(props)
 
                                     feature_df = pd.DataFrame(feature_data)
@@ -1238,30 +1239,36 @@ elif current_step == 3:  # Visualization
         # Filter for Sentinel-2 data
         sentinel_df = df[df['source'] == 'Sentinel-2']
 
+        # Add a dropdown to select year
+        selected_year = st.selectbox("Select Year", sentinel_df['year'].unique())
+
+        # Filter data by selected year
+        year_df = sentinel_df[sentinel_df['year'] == selected_year]
+
         # Overview metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.markdown(f"""<div class="metric-card">
-                <div class="metric-number">{len(sentinel_df)}</div>
-                <div class="metric-label">Sentinel-2 Pixels</div>
+                <div class="metric-number">{len(year_df)}</div>
+                <div class="metric-label">Pixels ({selected_year})</div>
             </div>""", unsafe_allow_html=True)
         with col2:
-            if 'NDVI' in sentinel_df.columns:
+            if 'NDVI' in year_df.columns:
                 st.markdown(f"""<div class="metric-card">
-                    <div class="metric-number">{sentinel_df['NDVI'].mean():.3f}</div>
-                    <div class="metric-label">Avg NDVI</div>
+                    <div class="metric-number">{year_df['NDVI'].mean():.3f}</div>
+                    <div class="metric-label">Avg NDVI ({selected_year})</div>
                 </div>""", unsafe_allow_html=True)
         with col3:
-            if 'NDWI' in sentinel_df.columns:
+            if 'NDWI' in year_df.columns:
                 st.markdown(f"""<div class="metric-card">
-                    <div class="metric-number">{sentinel_df['NDWI'].mean():.3f}</div>
-                    <div class="metric-label">Avg NDWI</div>
+                    <div class="metric-number">{year_df['NDWI'].mean():.3f}</div>
+                    <div class="metric-label">Avg NDWI ({selected_year})</div>
                 </div>""", unsafe_allow_html=True)
         with col4:
-            if 'B2' in sentinel_df.columns:
+            if 'B2' in year_df.columns:
                 st.markdown(f"""<div class="metric-card">
-                    <div class="metric-number">{sentinel_df['B2'].mean():.3f}</div>
-                    <div class="metric-label">Avg Blue Band</div>
+                    <div class="metric-number">{year_df['B2'].mean():.3f}</div>
+                    <div class="metric-label">Avg Blue Band ({selected_year})</div>
                 </div>""", unsafe_allow_html=True)
 
         # Visualization tabs
@@ -1270,44 +1277,44 @@ elif current_step == 3:  # Visualization
         with tab1:
             col1, col2 = st.columns(2)
             with col1:
-                if 'NDVI' in sentinel_df.columns:
+                if 'NDVI' in year_df.columns:
                     fig, ax = plt.subplots(figsize=(10, 6))
-                    ax.hist(sentinel_df['NDVI'].dropna(), bins=50, alpha=0.7, color='#667eea')
+                    ax.hist(year_df['NDVI'].dropna(), bins=50, alpha=0.7, color='#667eea')
                     ax.set_xlabel('NDVI')
                     ax.set_ylabel('Frequency')
-                    ax.set_title('NDVI Distribution (Sentinel-2)')
+                    ax.set_title(f'NDVI Distribution ({selected_year})')
                     ax.grid(True, alpha=0.3)
                     st.pyplot(fig)
             with col2:
-                if 'NDWI' in sentinel_df.columns:
+                if 'NDWI' in year_df.columns:
                     fig, ax = plt.subplots(figsize=(10, 6))
-                    ax.hist(sentinel_df['NDWI'].dropna(), bins=50, alpha=0.7, color='#764ba2')
+                    ax.hist(year_df['NDWI'].dropna(), bins=50, alpha=0.7, color='#764ba2')
                     ax.set_xlabel('NDWI')
                     ax.set_ylabel('Frequency')
-                    ax.set_title('NDWI Distribution (Sentinel-2)')
+                    ax.set_title(f'NDWI Distribution ({selected_year})')
                     ax.grid(True, alpha=0.3)
                     st.pyplot(fig)
 
         with tab2:
-            numeric_cols = sentinel_df.select_dtypes(include=[np.number]).columns
+            numeric_cols = year_df.select_dtypes(include=[np.number]).columns
             if len(numeric_cols) > 1:
                 fig, ax = plt.subplots(figsize=(12, 8))
-                correlation_matrix = sentinel_df[numeric_cols].corr()
+                correlation_matrix = year_df[numeric_cols].corr()
                 sns.heatmap(correlation_matrix, annot=True, cmap='RdYlBu_r', center=0, ax=ax)
-                ax.set_title('Feature Correlation Matrix (Sentinel-2)')
+                ax.set_title(f'Feature Correlation Matrix ({selected_year})')
                 st.pyplot(fig)
 
         with tab3:
-            if 'longitude' in sentinel_df.columns and 'latitude' in sentinel_df.columns:
-                if 'NDVI' in sentinel_df.columns:
+            if 'longitude' in year_df.columns and 'latitude' in year_df.columns:
+                if 'NDVI' in year_df.columns:
                     fig = px.scatter_mapbox(
-                        sentinel_df.sample(min(1000, len(sentinel_df))),
+                        year_df.sample(min(1000, len(year_df))),
                         lat='latitude',
                         lon='longitude',
                         color='NDVI',
                         zoom=10,
                         height=600,
-                        title="NDVI Spatial Distribution (Sentinel-2)",
+                        title=f"NDVI Spatial Distribution ({selected_year})",
                         color_continuous_scale='RdYlGn'
                     )
                     fig.update_layout(mapbox_style="open-street-map")
@@ -1329,6 +1336,9 @@ elif current_step == 4:  # Model Training
             df = st.session_state.feature_data.copy()
             # Filter for Sentinel-2 data
             df = df[df['source'] == 'Sentinel-2']
+            # Add a dropdown to select year
+            selected_year = st.selectbox("Select Year for Training", df['year'].unique())
+            df = df[df['year'] == selected_year]
             # Create synthetic labels
             if 'NDVI' in df.columns and 'NDWI' in df.columns:
                 def classify_pixel(row):
@@ -1464,16 +1474,18 @@ elif current_step == 5:  # Classification
         </div>
         """, unsafe_allow_html=True)
 
+        # Add a dropdown to select year
+        df = st.session_state.feature_data.copy()
+        sentinel_df = df[df['source'] == 'Sentinel-2']
+        selected_year = st.selectbox("Select Year for Classification", sentinel_df['year'].unique())
+        year_df = sentinel_df[sentinel_df['year'] == selected_year]
+
         if st.button("🚀 Classify Land Cover", type="primary"):
             try:
                 with st.spinner("🔄 Classifying land cover..."):
-                    df = st.session_state.feature_data.copy()
-                    # Filter for Sentinel-2 data
-                    df = df[df['source'] == 'Sentinel-2']
-
                     # Prepare features
                     feature_cols = model_info['feature_cols']
-                    X = df[feature_cols].fillna(0)
+                    X = year_df[feature_cols].fillna(0)
 
                     # Scale and predict
                     X_scaled = model_info['scaler'].transform(X)
@@ -1484,29 +1496,29 @@ elif current_step == 5:  # Classification
                     predicted_labels = model_info['label_encoder'].inverse_transform(predictions)
 
                     # Add predictions
-                    df['predicted_class'] = predicted_labels
-                    df['prediction_confidence'] = prediction_probs.max(axis=1)
+                    year_df['predicted_class'] = predicted_labels
+                    year_df['prediction_confidence'] = prediction_probs.max(axis=1)
 
-                    st.session_state.classified_data = df
+                    st.session_state.classified_data = year_df
 
                     st.markdown('<div class="success-message">✅ Classification completed!</div>', unsafe_allow_html=True)
 
                     # Results metrics
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        total_pixels = len(df)
+                        total_pixels = len(year_df)
                         st.markdown(f"""<div class="metric-card">
                             <div class="metric-number">{total_pixels}</div>
                             <div class="metric-label">Pixels Classified</div>
                         </div>""", unsafe_allow_html=True)
                     with col2:
-                        num_classes = df['predicted_class'].nunique()
+                        num_classes = year_df['predicted_class'].nunique()
                         st.markdown(f"""<div class="metric-card">
                             <div class="metric-number">{num_classes}</div>
                             <div class="metric-label">Land Cover Classes</div>
                         </div>""", unsafe_allow_html=True)
                     with col3:
-                        avg_confidence = df['prediction_confidence'].mean()
+                        avg_confidence = year_df['prediction_confidence'].mean()
                         st.markdown(f"""<div class="metric-card">
                             <div class="metric-number">{avg_confidence:.3f}</div>
                             <div class="metric-label">Avg Confidence</div>
@@ -1519,7 +1531,7 @@ elif current_step == 5:  # Classification
                     </div>
                     """, unsafe_allow_html=True)
 
-                    class_counts = df['predicted_class'].value_counts()
+                    class_counts = year_df['predicted_class'].value_counts()
                     fig, ax = plt.subplots(figsize=(10, 6))
                     colors = plt.cm.Set3(np.linspace(0, 1, len(class_counts)))
                     class_counts.plot(kind='bar', ax=ax, color=colors)
@@ -1627,11 +1639,14 @@ elif current_step == 7:  # Downloads
         if download_option == "Extracted Features (CSV)" and st.session_state.feature_data is not None:
             # Filter for Sentinel-2 data
             sentinel_df = st.session_state.feature_data[st.session_state.feature_data['source'] == 'Sentinel-2']
-            csv = sentinel_df.to_csv(index=False).encode('utf-8')
+            # Add a dropdown to select year
+            selected_year = st.selectbox("Select Year for Download", sentinel_df['year'].unique())
+            year_df = sentinel_df[sentinel_df['year'] == selected_year]
+            csv = year_df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Download Sentinel-2 Features",
+                label=f"📥 Download Sentinel-2 Features ({selected_year})",
                 data=csv,
-                file_name="sentinel2_features.csv",
+                file_name=f"sentinel2_features_{selected_year}.csv",
                 mime="text/csv",
                 type="primary"
             )
