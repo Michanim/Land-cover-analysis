@@ -1639,9 +1639,14 @@ elif current_step == 7:  # Downloads
         if download_option == "Extracted Features (CSV)" and st.session_state.feature_data is not None:
             # Filter for Sentinel-2 data
             sentinel_df = st.session_state.feature_data[st.session_state.feature_data['source'] == 'Sentinel-2']
+
             # Add a dropdown to select year
-            selected_year = st.selectbox("Select Year for Download", sentinel_df['year'].unique())
+            selected_year = st.selectbox("Select Year for Download", sentinel_df['year'].unique(), key="download_year")
+
+            # Filter data by selected year
             year_df = sentinel_df[sentinel_df['year'] == selected_year]
+
+            # Download button for the selected year
             csv = year_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label=f"📥 Download Sentinel-2 Features ({selected_year})",
